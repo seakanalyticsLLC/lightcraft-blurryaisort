@@ -1,0 +1,9 @@
+# Python packages for tools/blurcull (training the Blur Cull model; not needed to run LightCraft).
+#   python -m venv .venv-blurcull
+#   .venv-blurcull\Scripts\activate          (Windows)   |   source .venv-blurcull/bin/activate   (macOS / Linux)
+#   pip install -r tools/blurcull/requirements.txt
+# For an NVIDIA GPU install PyTorch first with the command from https://pytorch.org/get-started/locally/ (CUDA build).
+torch>=2.6
+numpy>=1.26
+opencv-python-headless>=4.9
+safetensors>=0.4
