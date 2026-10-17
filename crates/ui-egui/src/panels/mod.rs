@@ -1,6 +1,7 @@
 //! Window regions and panels.
 
 pub mod activity;
+pub mod blur_cull;
 pub mod bottombar;
 pub mod chips;
 pub mod compare;

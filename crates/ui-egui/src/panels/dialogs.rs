@@ -246,6 +246,7 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
         Dialog::FaceModel { .. } => "Add Face Model",
         Dialog::WhatsNew => "What's New",
         Dialog::Cull { .. } => "Assisted Culling",
+        Dialog::BlurCull { .. } => "Blur Cull",
         Dialog::SmartRules { id: None, .. } => "New Smart Album",
         Dialog::SmartRules { .. } => "Edit Smart Album",
         Dialog::AutoStack { .. } => "Auto-Stack by Capture Time",
@@ -313,6 +314,7 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
             Dialog::AllMetadata { .. } => 620.0,
             Dialog::Print => 1100.0,
             Dialog::FaceModel { .. } => 460.0,
+            Dialog::BlurCull { .. } => 480.0,
             Dialog::LightroomCatalog { .. } => 440.0,
             Dialog::ManageEffects { .. } => 560.0,
             _ => 380.0,
@@ -336,6 +338,7 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
                         egui::RichText::new(crate::i18n::tr_format!("Creates {} stacks from {} of {scope}", preview["stacks"], preview["photos"], scope = crate::i18n::tr(scope))).color(t.text_dim),
                     );
                 }
+                Dialog::BlurCull { selection, min, max, inside, outside } => crate::panels::blur_cull::body(app, ui, selection, min, max, inside, outside),
                 Dialog::Cull { reject_below, pick_best } => {
                     let n = app.session.selection.ids.len();
                     let scope = if n > 1 { crate::i18n::tr_format!("the {n} selected photos", n = n) } else { crate::i18n::tr_format!("the {} photos in view", app.session.visible_cloned().len()) };
@@ -1352,6 +1355,7 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
                     Dialog::SlideshowExport { .. } => "Export…",
                     Dialog::Print => "Print to PDF…",
                     Dialog::Merge { .. } => "Merge",
+                    Dialog::BlurCull { .. } => "Apply Flags",
                     Dialog::DenoiseModel { info, .. } if info["download"].is_string() => "Accept & Download",
                     Dialog::DenoiseModel { .. } => "Install",
                     Dialog::FaceModel { info, .. } if !informational && info["download"].is_string() => "Download",
@@ -1384,7 +1388,12 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
                     }
                     _ => false,
                 };
+                let blur_ready = match &dlg {
+                    Dialog::BlurCull { selection, .. } => crate::panels::blur_cull::can_apply(app, *selection),
+                    _ => true,
+                };
                 let can_confirm = !rename_blocked
+                    && blur_ready
                     && (informational
                         || !matches!(
                             &dlg,
@@ -1870,6 +1879,7 @@ pub fn confirm_dialog(app: &mut LightcraftApp, dlg: &Dialog) -> Result<serde_jso
         Dialog::DenoiseModel { info, accepted } => crate::panels::denoise::install(app, info, *accepted),
         Dialog::FaceModel { path, info, accepted } => crate::panels::faces::install(app, path, info, *accepted),
         Dialog::AllMetadata { .. } | Dialog::SystemInfo { .. } | Dialog::WhatsNew => Ok(serde_json::Value::Null),
+        Dialog::BlurCull { selection, min, max, inside, outside } => crate::panels::blur_cull::apply(app, *selection, *min, *max, inside, outside),
         Dialog::Cull { reject_below, pick_best } => {
             let mut p = json!({"pickBest": pick_best});
             if *reject_below > 0.0 {

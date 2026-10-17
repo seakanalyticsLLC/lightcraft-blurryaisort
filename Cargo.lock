@@ -3097,6 +3097,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "lightcraft-blur"
+version = "0.8.0"
+dependencies = [
+ "candle-core",
+ "lightcraft-testkit",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "lightcraft-catalog"
 version = "0.8.0"
 dependencies = [
@@ -3220,6 +3232,7 @@ dependencies = [
  "harfrust",
  "jxl-oxide",
  "libc",
+ "lightcraft-blur",
  "lightcraft-catalog",
  "lightcraft-codecs",
  "lightcraft-color",
@@ -3503,6 +3516,7 @@ dependencies = [
  "craft-ui",
  "egui",
  "egui_kittest",
+ "lightcraft-blur",
  "lightcraft-catalog",
  "lightcraft-codecs",
  "lightcraft-color",

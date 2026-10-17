@@ -295,5 +295,15 @@
   "Already in “{}”": "Уже в «{}»",
   "Move {n} photo{} to “{}”": "Перемістити до «{1}» фото: {n}{0:.0}",
   "Move {n} photo{} to “{}”?": "Перемістити до «{1}» фото: {n}{0:.0}?",
-  "Moved {n} photo{} to “{}”. Edit → Undo moves them back.": "До «{1}» переміщено фото: {n}{0:.0}. Редагування → Скасувати поверне їх."
+  "Moved {n} photo{} to “{}”. Edit → Undo moves them back.": "До «{1}» переміщено фото: {n}{0:.0}. Редагування → Скасувати поверне їх.",
+  "The installed Blur Cull model can't be used: {e}": "Встановлену модель Blur Cull не можна використати: {e}",
+  "Model trained {created}, {trained} steps": "Модель навчено {created}, кроків: {trained}",
+  "Selected ({n})": "Вибрані ({n})",
+  "All in View ({n})": "Усі в перегляді ({n})",
+  "Scoring {done} of {total}": "Оцінювання {done} з {total}",
+  "Score {n} Photos": "Оцінити фото ({n})",
+  "Inside the range ({n} photos):": "У діапазоні (фото: {n}):",
+  "Outside the range ({n} photos):": "Поза діапазоном (фото: {n}):",
+  "{n} photos without a score are left as they are.": "Фото без оцінки ({n}) залишаються без змін.",
+  "Blur Cull: {inside} inside the range, {outside} outside, {changed} flags changed": "Blur Cull: у діапазоні {inside}, поза ним {outside}, змінено позначок: {changed}"
 }

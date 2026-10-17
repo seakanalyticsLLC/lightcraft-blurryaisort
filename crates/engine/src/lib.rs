@@ -18,6 +18,8 @@ pub mod activity;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod apple_photos;
 pub mod availability;
+#[cfg(not(target_arch = "wasm32"))]
+mod blur_cull;
 pub(crate) mod camera_preview;
 pub mod camera_profiles;
 pub mod cmd;
@@ -257,6 +259,9 @@ pub struct Session {
     /// Reading focus points for photos imported before they were read (`photo.readFocusPoints`, `focus.pump`).
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) focus_scan: focus_scan::FocusScan,
+    /// Blur Cull: the optional model, the background scan and the scores beside the library (`blur.*`).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) blur: blur_cull::BlurCull,
     /// Copied develop settings (partial JSON) for Paste.
     pub clipboard: Option<Value>,
     /// The folder on disk the [`LibrarySource::Folder`] view browses.
@@ -438,6 +443,8 @@ impl Session {
             faces: Default::default(),
             #[cfg(not(target_arch = "wasm32"))]
             focus_scan: Default::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            blur: Default::default(),
             clipboard: None,
             meta_clipboard: None,
             browse: None,
@@ -1239,6 +1246,8 @@ mod tests_album_order;
 mod tests_album_remove;
 #[cfg(test)]
 mod tests_albums_local;
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests_blur_cull;
 #[cfg(test)]
 mod tests_color;
 #[cfg(test)]

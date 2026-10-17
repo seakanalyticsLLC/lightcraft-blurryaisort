@@ -295,5 +295,15 @@
   "Renames {n} face{} across the library. The files are not changed.": "在整个图库中重命名 {n} 张面孔。不会改动文件。{:.0}",
   "“{to}” is already a person. Combining them makes one person; Undo separates them again.": "“{to}”已经是另一个人。合并后成为一个人；撤销会再把他们分开。",
   "{what} merge added at {mp}: its full size, {full}, needs more memory than this computer has": "已添加 {what} 合并（{mp}）：完整尺寸（{full}）所需的内存超出了这台电脑的内存",
-  "{what} merge added at {mp}, the largest a panorama can be (its full size is {full})": "已添加 {what} 合并（{mp}），这是全景图的最大尺寸（完整尺寸：{full}）"
+  "{what} merge added at {mp}, the largest a panorama can be (its full size is {full})": "已添加 {what} 合并（{mp}），这是全景图的最大尺寸（完整尺寸：{full}）",
+  "The installed Blur Cull model can't be used: {e}": "无法使用已安装的 Blur Cull 模型：{e}",
+  "Model trained {created}, {trained} steps": "模型训练于 {created}，{trained} 步",
+  "Selected ({n})": "所选 ({n})",
+  "All in View ({n})": "视图中的全部 ({n})",
+  "Scoring {done} of {total}": "正在评分 {done}/{total}",
+  "Score {n} Photos": "为 {n} 张照片评分",
+  "Inside the range ({n} photos):": "范围内（{n} 张照片）：",
+  "Outside the range ({n} photos):": "范围外（{n} 张照片）：",
+  "{n} photos without a score are left as they are.": "{n} 张没有评分的照片保持不变。",
+  "Blur Cull: {inside} inside the range, {outside} outside, {changed} flags changed": "Blur Cull：范围内 {inside} 张，范围外 {outside} 张，更改了 {changed} 个旗标"
 }

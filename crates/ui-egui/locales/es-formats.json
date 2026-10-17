@@ -295,5 +295,15 @@
   "Already in “{}”": "Ya está en “{}”",
   "Move {n} photo{} to “{}”": "Mover {n} foto{0} a “{1}”",
   "Move {n} photo{} to “{}”?": "¿Mover {n} foto{0} a “{1}”?",
-  "Moved {n} photo{} to “{}”. Edit → Undo moves them back.": "{n} foto{0} movida{0} a “{1}”. Editar → Deshacer las devuelve."
+  "Moved {n} photo{} to “{}”. Edit → Undo moves them back.": "{n} foto{0} movida{0} a “{1}”. Editar → Deshacer las devuelve.",
+  "The installed Blur Cull model can't be used: {e}": "No se puede usar el modelo de Blur Cull instalado: {e}",
+  "Model trained {created}, {trained} steps": "Modelo entrenado el {created}, {trained} pasos",
+  "Selected ({n})": "Seleccionadas ({n})",
+  "All in View ({n})": "Todas en la vista ({n})",
+  "Scoring {done} of {total}": "Puntuando {done} de {total}",
+  "Score {n} Photos": "Puntuar {n} fotos",
+  "Inside the range ({n} photos):": "Dentro del rango ({n} fotos):",
+  "Outside the range ({n} photos):": "Fuera del rango ({n} fotos):",
+  "{n} photos without a score are left as they are.": "Las {n} fotos sin puntuación se dejan como están.",
+  "Blur Cull: {inside} inside the range, {outside} outside, {changed} flags changed": "Blur Cull: {inside} dentro del rango, {outside} fuera, {changed} marcas cambiadas"
 }

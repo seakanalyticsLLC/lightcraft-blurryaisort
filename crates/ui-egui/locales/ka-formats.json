@@ -295,5 +295,15 @@
   "Already in “{}”": "Already in “{}”",
   "Move {n} photo{} to “{}”": "Move {n} photo{} to “{}”",
   "Move {n} photo{} to “{}”?": "Move {n} photo{} to “{}”?",
-  "Moved {n} photo{} to “{}”. Edit → Undo moves them back.": "Moved {n} photo{} to “{}”. Edit → Undo moves them back."
+  "Moved {n} photo{} to “{}”. Edit → Undo moves them back.": "Moved {n} photo{} to “{}”. Edit → Undo moves them back.",
+  "The installed Blur Cull model can't be used: {e}": "დაყენებული Blur Cull მოდელის გამოყენება შეუძლებელია: {e}",
+  "Model trained {created}, {trained} steps": "მოდელი გაწვრთნილია {created}, ნაბიჯები: {trained}",
+  "Selected ({n})": "მონიშნული ({n})",
+  "All in View ({n})": "ყველა ხედში ({n})",
+  "Scoring {done} of {total}": "შეფასება: {done} / {total}",
+  "Score {n} Photos": "{n} ფოტოს შეფასება",
+  "Inside the range ({n} photos):": "დიაპაზონში ({n} ფოტო):",
+  "Outside the range ({n} photos):": "დიაპაზონის გარეთ ({n} ფოტო):",
+  "{n} photos without a score are left as they are.": "{n} ფოტო შეფასების გარეშე უცვლელი რჩება.",
+  "Blur Cull: {inside} inside the range, {outside} outside, {changed} flags changed": "Blur Cull: დიაპაზონში {inside}, გარეთ {outside}, შეცვლილი ნიშნები: {changed}"
 }

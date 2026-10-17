@@ -295,5 +295,15 @@
   "Already in “{}”": "Już w „{}”",
   "Move {n} photo{} to “{}”": "Przenieś do „{1}” — zdjęcia: {n}{0:.0}",
   "Move {n} photo{} to “{}”?": "Przenieść do „{1}” — zdjęcia: {n}{0:.0}?",
-  "Moved {n} photo{} to “{}”. Edit → Undo moves them back.": "Przeniesiono do „{1}” — zdjęcia: {n}{0:.0}. Edytuj → Cofnij przywróci je."
+  "Moved {n} photo{} to “{}”. Edit → Undo moves them back.": "Przeniesiono do „{1}” — zdjęcia: {n}{0:.0}. Edytuj → Cofnij przywróci je.",
+  "The installed Blur Cull model can't be used: {e}": "Nie można użyć zainstalowanego modelu Blur Cull: {e}",
+  "Model trained {created}, {trained} steps": "Model wytrenowany {created}, kroków: {trained}",
+  "Selected ({n})": "Zaznaczone ({n})",
+  "All in View ({n})": "Wszystkie w widoku ({n})",
+  "Scoring {done} of {total}": "Ocenianie {done} z {total}",
+  "Score {n} Photos": "Oceń zdjęcia ({n})",
+  "Inside the range ({n} photos):": "W zakresie (zdjęcia: {n}):",
+  "Outside the range ({n} photos):": "Poza zakresem (zdjęcia: {n}):",
+  "{n} photos without a score are left as they are.": "Zdjęcia bez oceny ({n}) pozostają bez zmian.",
+  "Blur Cull: {inside} inside the range, {outside} outside, {changed} flags changed": "Blur Cull: w zakresie {inside}, poza nim {outside}, zmienione flagi: {changed}"
 }

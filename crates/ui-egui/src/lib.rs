@@ -58,6 +58,8 @@ mod tests_appearance;
 #[cfg(test)]
 mod tests_before_after;
 #[cfg(test)]
+mod tests_blur_cull;
+#[cfg(test)]
 mod tests_browse_active;
 #[cfg(test)]
 mod tests_button;
@@ -1208,6 +1210,7 @@ impl LightcraftApp {
         model_setup::pump(self, ctx);
         panels::faces::pump(self, ctx);
         focus_scan::pump(self, ctx);
+        panels::blur_cull::pump(self, ctx);
         self.collect_screenshots(ctx);
         self.issue_screenshots(ctx);
         if self.fonts_ready {
@@ -1676,6 +1679,8 @@ pub struct Caches {
     pub faces_next_pump: f64,
     /// When to ask the focus-point reader again (`focus_scan::pump`).
     pub focus_next_pump: f64,
+    /// When to ask the Blur Cull scan again (`panels::blur_cull::pump`).
+    pub blur_next_pump: f64,
     /// When the user last dragged, typed or scrolled, and when they last moved the pointer (egui time).
     pub last_input: f64,
     /// The pace the face scan was last given, and whether the window was in front then (for `ui.inspect`).

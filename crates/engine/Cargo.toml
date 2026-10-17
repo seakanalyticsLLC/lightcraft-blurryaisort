@@ -44,6 +44,8 @@ lightcraft-segment = { workspace = true, optional = true }
 # model downloads run natively only (the web build fetches no models)
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 lightcraft-fetch = { workspace = true }
+# Blur Cull's network (the web build has the commands, which say they are desktop-only)
+lightcraft-blur = { workspace = true }
 
 [features]
 # AI masks with SAM 3 (Object / Describe). Off for the web and CLI builds.

@@ -295,5 +295,15 @@
   "Renames {n} face{} across the library. The files are not changed.": "ライブラリ全体で{n}件の顔の名前を変更します。ファイルは変更されません。{:.0}",
   "“{to}” is already a person. Combining them makes one person; Undo separates them again.": "「{to}」はすでに別の人物です。まとめると1人になり、元に戻すと再び分かれます。",
   "{what} merge added at {mp}: its full size, {full}, needs more memory than this computer has": "{what}合成を{mp}で追加しました：フルサイズ（{full}）にはこのコンピューターのメモリが足りません",
-  "{what} merge added at {mp}, the largest a panorama can be (its full size is {full})": "{what}合成を{mp}で追加しました。パノラマの最大サイズです（フルサイズ：{full}）"
+  "{what} merge added at {mp}, the largest a panorama can be (its full size is {full})": "{what}合成を{mp}で追加しました。パノラマの最大サイズです（フルサイズ：{full}）",
+  "The installed Blur Cull model can't be used: {e}": "インストール済みの Blur Cull モデルを使えません: {e}",
+  "Model trained {created}, {trained} steps": "モデル: {created} に学習、{trained} ステップ",
+  "Selected ({n})": "選択中 ({n})",
+  "All in View ({n})": "表示中のすべて ({n})",
+  "Scoring {done} of {total}": "採点中 {done} / {total}",
+  "Score {n} Photos": "{n} 枚を採点",
+  "Inside the range ({n} photos):": "範囲内 ({n} 枚):",
+  "Outside the range ({n} photos):": "範囲外 ({n} 枚):",
+  "{n} photos without a score are left as they are.": "スコアのない {n} 枚はそのままです。",
+  "Blur Cull: {inside} inside the range, {outside} outside, {changed} flags changed": "Blur Cull: 範囲内 {inside} 枚、範囲外 {outside} 枚、フラグ変更 {changed} 件"
 }

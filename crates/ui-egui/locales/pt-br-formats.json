@@ -295,5 +295,15 @@
   "Renames {n} face{} across the library. The files are not changed.": "Renomeia {n} rosto{} na biblioteca. Os arquivos não são alterados.",
   "“{to}” is already a person. Combining them makes one person; Undo separates them again.": "“{to}” já é uma pessoa. Combiná-las deixa uma só; Desfazer as separa de novo.",
   "{what} merge added at {mp}: its full size, {full}, needs more memory than this computer has": "{what} mesclagem adicionada em {mp}: o tamanho completo, {full}, precisa de mais memória do que este computador tem",
-  "{what} merge added at {mp}, the largest a panorama can be (its full size is {full})": "{what} mesclagem adicionada em {mp}, o maior tamanho possível para um panorama (tamanho completo: {full})"
+  "{what} merge added at {mp}, the largest a panorama can be (its full size is {full})": "{what} mesclagem adicionada em {mp}, o maior tamanho possível para um panorama (tamanho completo: {full})",
+  "The installed Blur Cull model can't be used: {e}": "Não é possível usar o modelo do Blur Cull instalado: {e}",
+  "Model trained {created}, {trained} steps": "Modelo treinado em {created}, {trained} passos",
+  "Selected ({n})": "Selecionadas ({n})",
+  "All in View ({n})": "Todas na visualização ({n})",
+  "Scoring {done} of {total}": "Pontuando {done} de {total}",
+  "Score {n} Photos": "Pontuar {n} fotos",
+  "Inside the range ({n} photos):": "Dentro do intervalo ({n} fotos):",
+  "Outside the range ({n} photos):": "Fora do intervalo ({n} fotos):",
+  "{n} photos without a score are left as they are.": "As {n} fotos sem pontuação ficam como estão.",
+  "Blur Cull: {inside} inside the range, {outside} outside, {changed} flags changed": "Blur Cull: {inside} dentro do intervalo, {outside} fora, {changed} marcações alteradas"
 }

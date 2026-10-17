@@ -131,7 +131,37 @@ fn sam3_dir(var: Option<std::ffi::OsString>, config: Option<PathBuf>) -> Option<
     var.filter(|v| !v.is_empty()).map(PathBuf::from).or_else(|| config.map(|d| d.join("models").join("sam3")))
 }
 
+/// Where the Blur Cull model is installed: `$LIGHTCRAFT_BLUR_MODEL` (a file) if set, else
+/// `<config>/models/blurnet.safetensors`.
+pub fn default_blur_model_path() -> Option<PathBuf> {
+    blur_model_path(std::env::var_os("LIGHTCRAFT_BLUR_MODEL"), config_dir())
+}
+
+/// [`default_blur_model_path`] for a given override and config folder: a non-empty override wins.
+fn blur_model_path(var: Option<std::ffi::OsString>, config: Option<PathBuf>) -> Option<PathBuf> {
+    var.filter(|v| !v.is_empty()).map(PathBuf::from).or_else(|| config.map(|d| d.join("models").join("blurnet.safetensors")))
+}
+
 impl Session {
+    /// Install and look for the Blur Cull model at the shared default place ([`default_blur_model_path`]).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn with_default_blur_model(mut self) -> Self {
+        self.blur.model_path = default_blur_model_path();
+        self
+    }
+
+    /// Install and look for the Blur Cull model at the shared default place (the web build has none).
+    #[cfg(target_arch = "wasm32")]
+    pub fn with_default_blur_model(self) -> Self {
+        self
+    }
+
+    /// Point Blur Cull at a model file (`None`: nowhere; `blur.*` says no model is installed).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_blur_model_path(&mut self, path: Option<PathBuf>) {
+        self.blur.model_path = path;
+    }
+
     /// Look for the SAM 3 model in the shared default folder ([`default_sam3_dir`]), and for the user's
     /// download mirrors in `<config>/models/sam3-mirrors.txt`.
     pub fn with_default_sam3_model(mut self) -> Self {
@@ -275,5 +305,16 @@ mod tests {
         assert_eq!(sam3_dir(None, Some(config.clone())), fallback);
         assert_eq!(sam3_dir(Some(std::ffi::OsString::new()), Some(config)), fallback);
         assert_eq!(sam3_dir(None, None), None);
+    }
+
+    /// A non-empty `LIGHTCRAFT_BLUR_MODEL` wins; unset or empty falls back to `<config>/models/blurnet.safetensors`.
+    #[test]
+    fn blur_model_path_prefers_the_override() {
+        let config = PathBuf::from("cfg");
+        let fallback = Some(config.join("models").join("blurnet.safetensors"));
+        assert_eq!(blur_model_path(Some("x.safetensors".into()), Some(config.clone())), Some(PathBuf::from("x.safetensors")));
+        assert_eq!(blur_model_path(None, Some(config.clone())), fallback);
+        assert_eq!(blur_model_path(Some(std::ffi::OsString::new()), Some(config)), fallback);
+        assert_eq!(blur_model_path(None, None), None);
     }
 }

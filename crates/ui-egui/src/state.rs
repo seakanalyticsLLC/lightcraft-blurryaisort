@@ -1094,6 +1094,15 @@ pub enum Dialog {
         reject_below: f32,
         pick_best: bool,
     },
+    /// Photo ▸ Blur Cull: score subject blur with the optional model and flag photos inside / outside a window.
+    /// `selection`: the selected photos (else all in view); `inside` / `outside`: `blur.apply` actions.
+    BlurCull {
+        selection: bool,
+        min: f32,
+        max: f32,
+        inside: String,
+        outside: String,
+    },
     /// Help ▸ System Info: (label, value) rows.
     DenoiseModel {
         info: serde_json::Value,

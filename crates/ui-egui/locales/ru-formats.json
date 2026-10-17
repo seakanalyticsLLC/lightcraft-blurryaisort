@@ -295,5 +295,15 @@
   "Already in “{}”": "Уже в «{}»",
   "Move {n} photo{} to “{}”": "Переместить в «{1}» фото: {n}{0:.0}",
   "Move {n} photo{} to “{}”?": "Переместить в «{1}» фото: {n}{0:.0}?",
-  "Moved {n} photo{} to “{}”. Edit → Undo moves them back.": "В «{1}» перемещено фото: {n}{0:.0}. Правка → Отменить вернёт их."
+  "Moved {n} photo{} to “{}”. Edit → Undo moves them back.": "В «{1}» перемещено фото: {n}{0:.0}. Правка → Отменить вернёт их.",
+  "The installed Blur Cull model can't be used: {e}": "Установленную модель Blur Cull нельзя использовать: {e}",
+  "Model trained {created}, {trained} steps": "Модель обучена {created}, шагов: {trained}",
+  "Selected ({n})": "Выбранные ({n})",
+  "All in View ({n})": "Все в просмотре ({n})",
+  "Scoring {done} of {total}": "Оценка {done} из {total}",
+  "Score {n} Photos": "Оценить фото ({n})",
+  "Inside the range ({n} photos):": "В диапазоне (фото: {n}):",
+  "Outside the range ({n} photos):": "Вне диапазона (фото: {n}):",
+  "{n} photos without a score are left as they are.": "Фото без оценки ({n}) остаются без изменений.",
+  "Blur Cull: {inside} inside the range, {outside} outside, {changed} flags changed": "Blur Cull: в диапазоне {inside}, вне его {outside}, изменено флажков: {changed}"
 }

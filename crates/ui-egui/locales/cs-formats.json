@@ -295,5 +295,15 @@
   "Already in “{}”": "Již v „{}“",
   "Move {n} photo{} to “{}”": "Přesunout do „{1}“ fotografie: {n}{0:.0}",
   "Move {n} photo{} to “{}”?": "Přesunout do „{1}“ fotografie: {n}{0:.0}?",
-  "Moved {n} photo{} to “{}”. Edit → Undo moves them back.": "Do „{1}“ přesunuto fotografií: {n}{0:.0}. Úpravy → Zpět je vrátí."
+  "Moved {n} photo{} to “{}”. Edit → Undo moves them back.": "Do „{1}“ přesunuto fotografií: {n}{0:.0}. Úpravy → Zpět je vrátí.",
+  "The installed Blur Cull model can't be used: {e}": "Nainstalovaný model Blur Cull nelze použít: {e}",
+  "Model trained {created}, {trained} steps": "Model natrénován {created}, kroků: {trained}",
+  "Selected ({n})": "Vybrané ({n})",
+  "All in View ({n})": "Vše v zobrazení ({n})",
+  "Scoring {done} of {total}": "Hodnocení {done} z {total}",
+  "Score {n} Photos": "Ohodnotit fotky ({n})",
+  "Inside the range ({n} photos):": "V rozsahu (fotky: {n}):",
+  "Outside the range ({n} photos):": "Mimo rozsah (fotky: {n}):",
+  "{n} photos without a score are left as they are.": "Fotky bez hodnocení ({n}) zůstanou beze změny.",
+  "Blur Cull: {inside} inside the range, {outside} outside, {changed} flags changed": "Blur Cull: v rozsahu {inside}, mimo {outside}, změněné značky: {changed}"
 }

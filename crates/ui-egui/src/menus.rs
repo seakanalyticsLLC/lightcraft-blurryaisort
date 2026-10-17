@@ -246,6 +246,8 @@ pub const UI_COMMANDS: &[UiCommand] = &[
     ("app.openLogFolder", "Open Log Folder", None, "Help"),
     ("app.whatsNew", "What's New", None, "Help"),
     ("dialog.cull", "Assisted Culling…", None, "Photo"),
+    ("dialog.blurCull", "Blur Cull…", None, "Photo"),
+    ("blur.chooseModel", "Install Blur Cull Model…", None, ""),
     ("app.help", "LightCraft Help", Some("F1"), "Help"),
     ("app.discord", "Join the ArtCraft Discord…", None, "Help"),
     ("app.feedback", "Send Feedback…", None, "Help"),
@@ -1445,6 +1447,35 @@ pub fn run_ui_command(app: &mut LightcraftApp, id: &str, p: &Value) -> Option<Re
         "dialog.cull" => {
             app.ui.dialog = Some(Dialog::Cull { reject_below: 0.0, pick_best: true });
             Ok(Value::Null)
+        }
+        "dialog.blurCull" => {
+            let selection = p.get("scope").and_then(Value::as_str).map_or(app.session.selection.ids.len() > 1, |s| s == "selection");
+            let num = |k: &str, d: f32| p.get(k).and_then(Value::as_f64).map_or(d, |v| v.clamp(0.0, 100.0) as f32);
+            let (min, max) = (num("min", 0.0), num("max", 25.0));
+            app.ui.dialog =
+                Some(Dialog::BlurCull { selection, min: min.min(max), max: max.max(min), inside: "pick".into(), outside: "reject".into() });
+            Ok(Value::Null)
+        }
+        "blur.chooseModel" => {
+            let path = match p.get("path").and_then(Value::as_str) {
+                Some(path) => path.trim().to_string(),
+                None => {
+                    let req = PickRequest::file(crate::i18n::tr("Install Blur Cull Model…"), "Blur Cull model", &["safetensors"]);
+                    match crate::pick::ask(app, id, p, "path", req, |s| s.pick_files.as_mut().map(|f| f())) {
+                        Picked::Now(paths) => match paths.first() {
+                            Some(path) => path.trim().to_string(),
+                            None => return Some(Ok(Value::Null)),
+                        },
+                        Picked::Later => return Some(Ok(Value::Null)),
+                        Picked::Unavailable => return Some(Err("no file dialog on this platform; supply path".into())),
+                    }
+                }
+            };
+            let r = app.run("blur.model.install", json!({"path": path}));
+            if r.is_ok() {
+                app.toast(&ctx, "Blur Cull model installed");
+            }
+            r
         }
         "app.whatsNew" => {
             app.ui.dialog = Some(Dialog::WhatsNew);
