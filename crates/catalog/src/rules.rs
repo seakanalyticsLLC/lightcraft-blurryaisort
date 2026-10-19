@@ -691,7 +691,7 @@ fn num_op(op: &str, have: Option<f64>, value: &Value) -> bool {
 }
 
 /// `landscape`, `portrait` or `square` (edges within 1 %) for a `w × h` frame; `None` when it has no area.
-fn aspect((w, h): (f64, f64)) -> Option<&'static str> {
+pub(crate) fn aspect((w, h): (f64, f64)) -> Option<&'static str> {
     if !(w > 0.0 && h > 0.0) {
         return None;
     }

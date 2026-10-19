@@ -114,6 +114,21 @@ scrolling pans in both axes and respects the operating system's scrolling direct
 These gestures work in Detail (including editing tools and full-screen preview), Compare and Reference
 views, and only apply over their image areas. Panning stops at the image edges.
 
+The Library Filter above the grid (View ▸ Filter Bar, `view.filterBar`) has a header whose Attribute, Metadata
+and None (`button:filterAttribute`, `button:filterMetadata`, `button:filterNone`) choose the sections under it:
+`view.filterSections {attribute?, metadata?}` (both false is None) replies `{attribute, metadata}`. The Metadata
+section is columns, left to right, of the values a field takes among the photos in view (`library.facets
+{columns: [{field, descending?}]}` lists them with their photo counts; each column looks only at the photos the
+columns to its left let through). `view.filterColumns {columns?: [{field, view?: hierarchical | flat, sort?:
+ascending | descending}]}` lays them out (1 to 64 fields, each once; a column that goes, or shows another field,
+lets go of its choice) and replies `{columns}`; the default is Date, ISO Speed, Shutter Speed, Aperture. What is
+chosen is `library.filter`'s `columns: [{field, values}]` (replaced whole; a photo matches when it has one of each
+column's values; a `date` value may be a year or a month, which takes in its days). Widgets: `filtercol:<field>:all`,
+`filtercol:<field>:<value>` (a click chooses it, again: All; `cmd` adds or takes out; `shift` a run),
+`filtercol:<field>:open:<year or month>` (the date tree), `filtercol:<field>:header` (its fields:
+`filtercol:field:<field>`) and `filtercol:<field>:menu` (`…:addLeft`, `…:addRight`, `…:remove`,
+`…:hierarchical`, `…:flat`, `…:ascending`, `…:descending`).
+
 The camera's focus point ([focus-points.md](focus-points.md)) is `meta.focus` in `photo.inspect`: `{rect: {x0, y0,
 x1, y1}, mode?, area?, tracking?}`, normalized to the upright photo (absent when the file records none).
 `view.focusPoint {on?}` shows it over the photo (no params toggles; replies `{on}`), and `view.zoomToFocus {on?}`

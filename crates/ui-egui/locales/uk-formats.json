@@ -24,6 +24,7 @@
   "Added {n} photo{} to “{}”": "До «{1}» додано фото: {n}{0:.0}",
   "Added {what} to {name}": "{what}: додано до {name}",
   "Adding photos… {} of {}": "Додавання фото… {} з {}",
+  "All ({} {})": "Усі ({} {})",
   "All {n} selected photos move by the same amount.": "Усі вибрані фото ({n}) зміщуються на однакове значення.",
   "Already in the library, in Recently Deleted: {} photo{} selected · right-click ▸ Restore, or Delete Permanently to import afresh": "Уже в бібліотеці, у нещодавно видалених: вибрано фото: {}{:.0} · права кнопка → Відновити або Видалити назавжди, щоб імпортувати заново",
   "Already in the library: {} photo{} selected in All Photos": "Уже в бібліотеці: вибрано фото в усіх фото: {}{:.0}",

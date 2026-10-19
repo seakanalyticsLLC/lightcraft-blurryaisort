@@ -131,6 +131,20 @@ pub enum EngineError {
 pub type Result<T> = std::result::Result<T, EngineError>;
 
 /// One undo step: the inverse op and a label.
+/// One metadata column of the Library Filter ([`Session::facets`]): its field, how many photos it looks
+/// through (those the columns to its left let through), and the values among them with their counts.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct Facet {
+    pub field: String,
+    pub photos: usize,
+    pub values: Vec<lightcraft_catalog::FacetValue>,
+}
+
+/// The most metadata columns a filter or a `library.facets` request may name, and the most values one
+/// column may choose: far past what fits on screen, and a bound on what a request can ask for.
+pub const MAX_FILTER_COLUMNS: usize = 64;
+pub const MAX_COLUMN_VALUES: usize = 10_000;
+
 #[derive(Clone, Debug)]
 pub struct UndoEntry {
     pub label: String,
@@ -209,6 +223,9 @@ pub struct Session {
     /// Shared, so frontends can hold it across frames without copying ([`Session::visible_shared`]).
     visible: Arc<[PhotoId]>,
     visible_key: Option<(u64, String)>,
+    /// The Library Filter's metadata columns last worked out ([`Session::facets`]), and what they were worked
+    /// out for.
+    facets: Option<(String, Arc<[Facet]>)>,
     /// A view holds the photos it shows until it is refreshed (`library.holdView`): an edit that makes a photo stop
     /// matching a smart album's rules, Picks or the filter bar leaves it where it is. Off: the photo goes at once.
     pub hold_view: bool,
@@ -420,6 +437,7 @@ impl Session {
             selection: Selection::default(),
             visible: Vec::new().into(),
             visible_key: None,
+            facets: None,
             hold_view: false,
             base: None,
             view_followed: 0,
@@ -1093,6 +1111,55 @@ impl Session {
             self.visible_key = Some(key);
         }
         &self.visible
+    }
+
+    /// The Library Filter's metadata columns `columns` (each a field and whether its values sort descending), left to
+    /// right: each lists the values its field takes among the photos in view that the columns to its left let
+    /// through (what is chosen in them, [`Filter::columns`]), and how many photos have each. A chosen value no
+    /// photo there has any more is still listed, with no photos, so it can be let go of. Worked out again only
+    /// when the library, the view or the columns change.
+    pub fn facets(&mut self, columns: &[(String, bool)]) -> Arc<[Facet]> {
+        let mut key =
+            format!("{}|{:?}|{:?}|{:?}|{:?}|{:?}", self.catalog.revision, self.source, self.filter, self.browse, self.library_folder, columns);
+        if self.source == LibrarySource::Missing {
+            key.push_str(&format!("|{}", self.media.availability.generation()));
+        }
+        if let Some((k, f)) = &self.facets
+            && *k == key
+        {
+            return f.clone();
+        }
+        lightcraft_catalog::rules::set_now(Some((self.clock)()));
+        // the view without the columns' choices: they narrow it column by column below
+        let base = Filter { columns: Vec::new(), ..self.filter.clone() };
+        let f = self.view_filter(self.source, &base);
+        let mut ids = self.catalog.query(&f, &Sort::default());
+        if self.source == LibrarySource::Missing {
+            let (cat, avail) = (&self.catalog, &self.media.availability);
+            ids.retain(|id| cmd::missing::is_missing(cat, avail, *id));
+        }
+        let mut photos: Vec<&lightcraft_catalog::Photo> = ids.iter().filter_map(|id| self.catalog.photo(*id).map(|p| p.as_ref())).collect();
+        let mut out = Vec::with_capacity(columns.len());
+        for (field, descending) in columns {
+            let mut values = lightcraft_catalog::facets::tally(field, photos.iter().copied(), *descending);
+            let chosen = self.filter.columns.iter().find(|c| c.field == *field);
+            if let Some(c) = chosen {
+                for v in &c.values {
+                    // (a year or month of the date tree is listed through its days)
+                    let listed = values.iter().any(|x| x.value == *v || (field == "date" && !v.is_empty() && x.value.starts_with(v.as_str())));
+                    if !listed {
+                        values.push(lightcraft_catalog::FacetValue { value: v.clone(), count: 0 });
+                    }
+                }
+            }
+            out.push(Facet { field: field.clone(), photos: photos.len(), values });
+            if let Some(c) = chosen {
+                photos.retain(|p| lightcraft_catalog::facets::column_matches(c, p));
+            }
+        }
+        let out: Arc<[Facet]> = out.into();
+        self.facets = Some((key, out.clone()));
+        out
     }
 
     /// `source` as a filter over `base` (the filter bar's, or none), with the folder it shows.

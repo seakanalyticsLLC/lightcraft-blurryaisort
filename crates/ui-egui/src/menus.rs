@@ -122,6 +122,10 @@ pub const UI_COMMANDS: &[UiCommand] = &[
     ("view.back", "Back to Grid", Some("Escape"), ""),
     ("tool.done", "Done", Some("Enter"), ""),
     ("view.filterBar", "Filter Bar", Some("Shift+F"), "View"),
+    // {attribute?: bool, metadata?: bool}: the Library Filter's sections (both off: None)
+    ("view.filterSections", "Library Filter Sections", None, ""),
+    // {columns?: [{field, view?: hierarchical|flat, sort?: ascending|descending}]}: the Metadata columns
+    ("view.filterColumns", "Library Filter Columns", None, ""),
     ("local.addRoot", "Add Folder to Local", None, ""),
     ("local.hide", "Remove from Local", None, ""),
     ("local.restoreHidden", "Show Hidden Local Locations", None, ""),
@@ -1099,6 +1103,43 @@ pub fn run_ui_command(app: &mut LightcraftApp, id: &str, p: &Value) -> Option<Re
             app.ui.set_single_panel(on.unwrap_or(!app.ui.single_panel));
             json!({"soloSections": app.ui.single_panel})
         }),
+        "view.filterSections" => {
+            // {attribute?: bool, metadata?: bool} → {attribute, metadata}; both false is None
+            let flag = |key: &str| match p.get(key) {
+                None => Ok(None),
+                Some(v) => v.as_bool().map(Some).ok_or_else(|| format!("view.filterSections: `{key}` must be true or false")),
+            };
+            let (attribute, metadata) = match (flag("attribute"), flag("metadata")) {
+                (Ok(a), Ok(m)) => (a, m),
+                (Err(e), _) | (_, Err(e)) => return Some(Err(e)),
+            };
+            if let Some(a) = attribute {
+                app.ui.filter_attribute = a;
+            }
+            if let Some(m) = metadata {
+                app.ui.filter_metadata = m;
+            }
+            Ok(json!({"attribute": app.ui.filter_attribute, "metadata": app.ui.filter_metadata}))
+        }
+        "view.filterColumns" => {
+            // {columns?: [{field, view?, sort?}]} → {columns}: the Metadata section's columns, left to right
+            if let Some(v) = p.get("columns") {
+                let cols = match filter_columns(v) {
+                    Ok(c) => c,
+                    Err(e) => return Some(Err(e)),
+                };
+                // a column that went, or lists another field now, lets go of what was chosen in it
+                let kept: Vec<lightcraft_catalog::ColumnFilter> =
+                    app.session.filter.columns.iter().filter(|c| cols.iter().any(|x| x.field == c.field)).cloned().collect();
+                if kept.len() != app.session.filter.columns.len()
+                    && let Err(e) = app.run("library.filter", json!({"columns": kept}))
+                {
+                    return Some(Err(e));
+                }
+                app.ui.filter_columns = cols;
+            }
+            Ok(json!({"columns": columns_json(&app.ui.filter_columns)}))
+        }
         "view.filterBar" => {
             app.ui.filter_bar = !app.ui.filter_bar;
             if app.ui.filter_bar && !matches!(app.ui.view, ViewMode::PhotoGrid | ViewMode::SquareGrid) {
@@ -2431,4 +2472,51 @@ fn open_originals(app: &mut LightcraftApp, p: &Value) -> Result<Value, String> {
         return Err(format!("Couldn't open the editor: {e}"));
     }
     Ok(json!({"opened": opened, "skipped": skipped, "app": editor, "failed": failed}))
+}
+
+/// The Metadata columns a `view.filterColumns` request lays out, checked: a list of 1 to
+/// [`lightcraft_engine::MAX_FILTER_COLUMNS`] columns, each a known field shown once.
+fn filter_columns(v: &Value) -> Result<Vec<crate::state::FilterColumn>, String> {
+    const C: &str = "view.filterColumns";
+    let list = v.as_array().ok_or_else(|| format!("{C}: `columns` must be a list"))?;
+    if list.is_empty() || list.len() > lightcraft_engine::MAX_FILTER_COLUMNS {
+        return Err(format!("{C}: between 1 and {} columns", lightcraft_engine::MAX_FILTER_COLUMNS));
+    }
+    let mut cols: Vec<crate::state::FilterColumn> = Vec::with_capacity(list.len());
+    for c in list {
+        let field = c.get("field").and_then(Value::as_str).ok_or_else(|| format!("{C}: each column needs a `field`"))?;
+        if lightcraft_catalog::facets::field(field).is_none() {
+            return Err(format!("{C}: unknown field `{field}`"));
+        }
+        if cols.iter().any(|x| x.field == field) {
+            return Err(format!("{C}: `{field}` is shown twice"));
+        }
+        let flat = match c.get("view").and_then(Value::as_str) {
+            None | Some("hierarchical") => false,
+            Some("flat") => true,
+            Some(other) => return Err(format!("{C}: view `{other}` (hierarchical or flat)")),
+        };
+        let descending = match c.get("sort").and_then(Value::as_str) {
+            None | Some("ascending") => false,
+            Some("descending") => true,
+            Some(other) => return Err(format!("{C}: sort `{other}` (ascending or descending)")),
+        };
+        cols.push(crate::state::FilterColumn { field: field.into(), flat, descending });
+    }
+    Ok(cols)
+}
+
+/// The Metadata columns as `view.filterColumns` takes and gives them.
+pub(crate) fn columns_json(cols: &[crate::state::FilterColumn]) -> Value {
+    Value::Array(
+        cols.iter()
+            .map(|c| {
+                json!({
+                    "field": c.field,
+                    "view": if c.flat { "flat" } else { "hierarchical" },
+                    "sort": if c.descending { "descending" } else { "ascending" },
+                })
+            })
+            .collect(),
+    )
 }

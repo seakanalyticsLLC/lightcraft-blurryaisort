@@ -194,6 +194,13 @@ pub fn filter_chips(f: &Filter, cat: &Catalog) -> Vec<FilterChip> {
             add(format!("{name}: {x}"), json!({key: Null}));
         }
     }
+    // the Library Filter's metadata columns: one chip each, which lets go of that column's choice
+    for c in f.columns.iter().filter(|c| !c.values.is_empty()) {
+        let name = lightcraft_catalog::facets::field(&c.field).map_or(c.field.as_str(), |x| x.label);
+        let values: Vec<&str> = c.values.iter().map(|v| if v.is_empty() { "Unknown" } else { v.as_str() }).collect();
+        let rest: Vec<&lightcraft_catalog::ColumnFilter> = f.columns.iter().filter(|o| o.field != c.field).collect();
+        add(format!("{name}: {}", values.join(" or ")), json!({"columns": rest}));
+    }
     if let Some(d) = &f.date {
         add(format!("Date: {}", date_label(d)), json!({"date": Null}));
     }

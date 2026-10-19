@@ -90,6 +90,8 @@ mod tests_error_kinds;
 #[cfg(test)]
 mod tests_filmstrip;
 #[cfg(test)]
+mod tests_filter_columns;
+#[cfg(test)]
 mod tests_focus_point;
 #[cfg(test)]
 mod tests_folder_drop;
@@ -1645,7 +1647,6 @@ pub struct Caches {
     completions: Option<(u64, std::sync::Arc<panels::keywording::Offers>)>,
     counts: Option<(u64, LibraryCounts)>,
     date_groups: Option<(u64, std::sync::Arc<Vec<lightcraft_catalog::DateGroup>>)>,
-    filter_values: Option<(u64, std::sync::Arc<FilterValues>)>,
     /// The albums' counts: the minute they are of (while a smart album asks about "the last N days"), the tally
     /// that follows edits, and the counts as the panels take them.
     album_counts:
@@ -1703,14 +1704,6 @@ pub struct LibraryCounts {
     pub total: usize,
     pub picks: usize,
     pub deleted: usize,
-}
-
-/// The values the filter bar's pickers offer.
-#[derive(Clone, Debug, Default)]
-pub struct FilterValues {
-    pub cameras: Vec<String>,
-    pub lenses: Vec<String>,
-    pub keywords: Vec<String>,
 }
 
 /// What the smart-album rule dialog shows besides the rules themselves: their problems (each row
@@ -1892,28 +1885,6 @@ impl Caches {
         let g = kept.unwrap_or_else(|| std::sync::Arc::new(cat.date_groups()));
         self.date_groups = Some((cat.revision, g.clone()));
         g
-    }
-    /// Cameras, lenses and keywords in the library (filter bar pickers).
-    pub fn filter_values(&mut self, cat: &lightcraft_catalog::Catalog) -> std::sync::Arc<FilterValues> {
-        match &self.filter_values {
-            Some((r, v)) if *r == cat.revision => v.clone(),
-            _ => {
-                let distinct = |mut v: Vec<String>| {
-                    v.retain(|s| !s.trim().is_empty());
-                    v.sort_by_key(|s| s.to_lowercase());
-                    v.dedup();
-                    v
-                };
-                let lib = || cat.photos().filter(|p| p.in_library());
-                let v = std::sync::Arc::new(FilterValues {
-                    cameras: distinct(lib().map(|p| p.meta.camera.clone()).collect()),
-                    lenses: distinct(lib().map(|p| p.meta.lens.clone()).collect()),
-                    keywords: cat.keywords().into_iter().map(|(k, _)| k).collect(),
-                });
-                self.filter_values = Some((cat.revision, v.clone()));
-                v
-            }
-        }
     }
     /// What the Add keyword box offers for `typed` (see [`panels::keywording::offers`]). Kept apart
     /// from [`Self::suggestions`]: both are asked for on every frame of typing, and each looks

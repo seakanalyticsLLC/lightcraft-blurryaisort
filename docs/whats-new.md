@@ -1,5 +1,20 @@
 # What's new in LightCraft
 
+## 2026-10-19
+
+### Filter the library by camera settings, as in Lightroom
+- The filter bar (View ▸ Filter Bar, Shift+F) is now Lightroom's Library Filter. Its header turns on Attribute
+  (rating, flags, labels, type, edited) and Metadata, in any combination; None hides both. Metadata shows columns
+  of what the photos in view were taken with: by default Date, ISO Speed, Shutter Speed and Aperture. Each column
+  starts with "All (3 ISO Speeds)" and lists only values a photo in view has, with how many photos have each.
+  Click a value to show those photos (click it again for All), Ctrl/⌘-click to add more, Shift-click for a run.
+  Columns narrow from left to right: pick an ISO and the columns to its right list only what those photos have.
+- Click a column's name to show another field in it: Date, Month, Day, File Type, Flag, Rating, Label, Keyword,
+  Edit, Camera, Lens, Focal Length, Shutter Speed, Aperture, ISO Speed, GPS Data, Location, City, State /
+  Province, Country / Region, Creator, Copyright Status, or Develop ▸ Aspect Ratio and Treatment. Its ≡ menu adds
+  a column to the left or right, removes it, shows dates as years ▸ months ▸ days or as a list, and sorts up or
+  down. The Camera, Lens and Keyword pickers moved into these columns.
+
 ## 2026-10-14
 
 ### Model downloads time out on a name that doesn't resolve

@@ -620,6 +620,35 @@ pub enum KeywordChips {
     Grouped,
 }
 
+/// One column of the Library Filter's Metadata section: the field it lists (a
+/// [`lightcraft_catalog::facets::FIELDS`] id), whether a date shows as a flat list rather than a
+/// year ▸ month ▸ day tree, and whether its values sort descending.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct FilterColumn {
+    pub field: String,
+    pub flat: bool,
+    pub descending: bool,
+}
+
+impl Default for FilterColumn {
+    fn default() -> Self {
+        FilterColumn { field: "date".into(), flat: false, descending: false }
+    }
+}
+
+impl FilterColumn {
+    /// A column of `field`, as a new one is laid out.
+    pub fn of(field: &str) -> Self {
+        FilterColumn { field: field.into(), ..Default::default() }
+    }
+
+    /// The columns a new library filter shows: Date, ISO Speed, Shutter Speed, Aperture.
+    pub fn defaults() -> Vec<FilterColumn> {
+        ["date", "iso", "shutterSpeed", "aperture"].into_iter().map(FilterColumn::of).collect()
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct UiState {
@@ -838,8 +867,17 @@ pub struct UiState {
     /// Remove tool: Visualize Spots (high-pass black/white view) and its threshold 0..100.
     pub visualize_spots: bool,
     pub spots_threshold: f32,
-    /// The library filter bar above the grid.
+    /// The library filter bar above the grid (the Library Filter: its header, and the sections below).
     pub filter_bar: bool,
+    /// The Library Filter's sections shown under its header: Attribute (rating, flags, labels, kind,
+    /// edited) and Metadata (the columns). None hides both.
+    pub filter_attribute: bool,
+    pub filter_metadata: bool,
+    /// The Metadata section's columns, left to right; each narrows the ones to its right.
+    pub filter_columns: Vec<FilterColumn>,
+    /// The date-tree rows open in the Metadata section's columns (`2016`, `2016-08`).
+    #[serde(skip)]
+    pub filter_open: std::collections::BTreeSet<String>,
     /// Folders kept in Local (Browse Folder…, Keep in Local / Add to Local; `local.addRoot`):
     /// listed after the built-in locations, across restarts, whatever is browsed.
     pub local_roots: Vec<String>,
@@ -1378,6 +1416,10 @@ impl Default for UiState {
             settings: AppSettings::default(),
             window_fullscreen: None,
             filter_bar: false,
+            filter_attribute: true,
+            filter_metadata: true,
+            filter_columns: FilterColumn::defaults(),
+            filter_open: Default::default(),
             local_roots: Vec::new(),
             local_browse_root: None,
             compare: None,

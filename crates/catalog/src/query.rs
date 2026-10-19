@@ -66,6 +66,10 @@ pub struct Filter {
     /// Smart-album rules (all / any / none, nested groups; see [`crate::rules`]).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rule_set: Option<crate::RuleSet>,
+    /// The Library Filter's metadata columns with something chosen: a photo matches when, in each,
+    /// it has one of the values chosen (see [`crate::facets`]).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub columns: Vec<crate::ColumnFilter>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -255,6 +259,11 @@ impl Filter {
             (None, Some(b)) => v.push(format!("captured until {b}")),
             _ => {}
         }
+        for c in self.columns.iter().filter(|c| !c.values.is_empty()) {
+            let name = crate::facets::field(&c.field).map_or(c.field.as_str(), |f| f.label).to_lowercase();
+            let values: Vec<&str> = c.values.iter().map(|v| if v.is_empty() { "unknown" } else { v.as_str() }).collect();
+            v.push(format!("{name} {}", values.join(" or ")));
+        }
         if !self.text.trim().is_empty() {
             v.push(format!("“{}”", self.text.trim()));
         }
@@ -407,6 +416,9 @@ impl Filter {
         if let Some(c) = &self.camera
             && !p.meta.camera.eq_ignore_ascii_case(c)
         {
+            return false;
+        }
+        if !self.columns.iter().all(|c| crate::facets::column_matches(c, p)) {
             return false;
         }
         self.text.split_whitespace().all(|tok| token_matches(p, tok))

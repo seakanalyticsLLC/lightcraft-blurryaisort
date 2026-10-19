@@ -34,6 +34,7 @@
   "Added {what} to {name}": "Přidáno {what} do {name}",
   "Added “{keyword}” to {n} photo{}": "K fotografiím přidáno „{keyword}“: {n}{:.0}",
   "Adding photos… {} of {}": "Přidávání fotografií… {} z {}",
+  "All ({} {})": "Vše ({} {})",
   "All {n} selected photos move by the same amount.": "Všech {n} vybraných fotografií se posune o stejnou hodnotu.",
   "Already in the library, in Recently Deleted: {} photo{} selected · right-click ▸ Restore, or Delete Permanently to import afresh": "Již v knihovně, v nedávno odstraněných: vybrané fotografie: {}{:.0} · pravé tlačítko → Obnovit, nebo Trvale odstranit pro nový import",
   "Already in the library: {} photo{} selected in All Photos": "Již v knihovně: ve všech fotografiích vybráno: {}{:.0}",

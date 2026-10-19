@@ -11,6 +11,7 @@ pub mod dialogs;
 pub mod edit;
 pub mod empty_library;
 pub mod faces;
+pub mod filter_columns;
 pub mod filterbar;
 pub mod grid;
 pub mod keymap;

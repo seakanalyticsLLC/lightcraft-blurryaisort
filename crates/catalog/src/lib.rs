@@ -14,6 +14,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod dates;
+pub mod facets;
 pub mod folders;
 mod index;
 pub mod journal;
@@ -32,6 +33,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 pub use dates::{DateRun, GroupBy};
+pub use facets::{ColumnFilter, FacetValue};
 pub use folders::{FolderNode, FolderRecord};
 pub use journal::{Journal, LoadReport, PersistStats, SnapshotPolicy, SnapshotTiming};
 pub use keywords::KeywordNode;

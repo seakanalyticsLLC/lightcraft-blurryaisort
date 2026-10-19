@@ -32,6 +32,20 @@ fn chip_width(ui: &egui::Ui, label: &str, font: egui::FontId) -> f32 {
 /// Localise generated chip labels without rewriting search text or metadata values.
 pub(crate) fn display_label(chip: &FilterChip, filter: &lightcraft_catalog::Filter, catalog: &lightcraft_catalog::Catalog) -> String {
     use crate::i18n::{date_group_label, rules_label, tr};
+    // a metadata column's chip names its values as the column lists them (`ISO 100`, `f / 2.8`), in
+    // every language
+    if let Some(rest) = chip.clear.get("columns").and_then(serde_json::Value::as_array) {
+        // the metadata column this chip lets go of: the one the patch leaves out
+        let kept: Vec<&str> = rest.iter().filter_map(|c| c.get("field").and_then(serde_json::Value::as_str)).collect();
+        if let Some(label) = filter
+            .columns
+            .iter()
+            .find(|c| !kept.contains(&c.field.as_str()))
+            .and_then(|c| super::filter_columns::chip_label(&c.field, filter, catalog))
+        {
+            return label;
+        }
+    }
     if crate::i18n::language() == crate::i18n::Locale::En {
         return chip.label.clone();
     }

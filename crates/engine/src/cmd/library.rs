@@ -407,13 +407,14 @@ pub fn specs() -> Vec<CommandSpec> {
             "Filter",
             [],
             None,
-            "partial Filter: {text?, rating?, ratingOp?: atLeast|exactly|atMost, flag?: pick|reject|none|null, label?, kind?, merged?: hdr|panorama|hdrPanorama|any, edited?, date?, libraryFolder?: a path from library.folders, keyword?, person?, camera?}",
+            "partial Filter: {text?, rating?, ratingOp?: atLeast|exactly|atMost, flag?: pick|reject|none|null, label?, kind?, merged?: hdr|panorama|hdrPanorama|any, edited?, date?, libraryFolder?: a path from library.folders, keyword?, person?, camera?, columns?: [{field, values}] (the Library Filter's metadata columns with something chosen, replaced whole: a photo matches when it has one of each column's values; fields and values as library.facets lists them)}",
             always,
             |s, p| {
                 let mut v = serde_json::to_value(&s.filter).unwrap_or_default();
                 lightcraft_develop::presets::deep_merge(&mut v, p);
                 let f: Filter = serde_json::from_value(v).map_err(|e| bad("library.filter", e.to_string()))?;
                 let mut f = f;
+                f.columns = checked_columns(f.columns)?;
                 // a blank folder is no folder: no hidden "filters active" state
                 f.library_folder = f.library_folder.filter(|d| !d.trim().is_empty());
                 if f.library_folder.is_some() && s.source == LibrarySource::LibraryFolder {
@@ -431,6 +432,30 @@ pub fn specs() -> Vec<CommandSpec> {
                 }
                 s.filter = f;
                 Ok(json!({"count": s.visible().len()}))
+            }
+        ),
+        cmd!(
+            query "library.facets",
+            "Library Filter Columns",
+            [],
+            None,
+            "{columns: [{field, descending?}]} → [{field, photos, values: [{value, count}]}] the Library Filter's metadata columns, left to right: each lists the values its field takes among the photos in view that the columns to its left let through (what library.filter's `columns` chose), with how many photos have each; `\"\"` is Unknown, a chosen value no photo has any more is listed with count 0. Fields: date (YYYY-MM-DD; choose a year or month to take in its days), month (YYYY-MM), day (MM-DD), fileType, flag, rating, label, keyword, edit, camera, lens, focalLength, shutterSpeed, aperture, iso, gps, location, city, state, country, creator, copyrightStatus, aspect, treatment",
+            always,
+            |s, p| {
+                const C: &str = "library.facets";
+                let cols = p.get("columns").and_then(Value::as_array).ok_or_else(|| bad(C, "missing `columns`: [{field, descending?}]"))?;
+                if cols.len() > crate::MAX_FILTER_COLUMNS {
+                    return Err(bad(C, format!("at most {} columns", crate::MAX_FILTER_COLUMNS)));
+                }
+                let mut asked = Vec::with_capacity(cols.len());
+                for c in cols {
+                    let field = c.get("field").and_then(Value::as_str).ok_or_else(|| bad(C, "each column needs a `field`"))?;
+                    if lightcraft_catalog::facets::field(field).is_none() {
+                        return Err(bad(C, format!("unknown field `{field}`")));
+                    }
+                    asked.push((field.to_string(), c.get("descending").and_then(Value::as_bool).unwrap_or(false)));
+                }
+                Ok(serde_json::to_value(&*s.facets(&asked)).unwrap_or_default())
             }
         ),
         cmd!(
@@ -1614,6 +1639,33 @@ pub fn specs() -> Vec<CommandSpec> {
 /// `base` with a partial Filter (JSON) merged on top.
 /// `patch` merged onto `base`, its rules brought up to date (`RuleSet::upgrade`), unchecked (see
 /// [`merge_rules`]).
+/// The metadata columns of a `library.filter` request, checked: known fields, within bounds; columns with
+/// nothing chosen dropped (they don't filter, and an empty filter is no filter).
+fn checked_columns(columns: Vec<lightcraft_catalog::ColumnFilter>) -> Result<Vec<lightcraft_catalog::ColumnFilter>> {
+    const C: &str = "library.filter";
+    if columns.len() > crate::MAX_FILTER_COLUMNS {
+        return Err(bad(C, format!("at most {} columns", crate::MAX_FILTER_COLUMNS)));
+    }
+    let mut out: Vec<lightcraft_catalog::ColumnFilter> = Vec::with_capacity(columns.len());
+    for mut c in columns {
+        if lightcraft_catalog::facets::field(&c.field).is_none() {
+            return Err(bad(C, format!("unknown column field `{}`", c.field)));
+        }
+        if c.values.len() > crate::MAX_COLUMN_VALUES {
+            return Err(bad(C, format!("at most {} values in a column", crate::MAX_COLUMN_VALUES)));
+        }
+        if out.iter().any(|o| o.field == c.field) {
+            return Err(bad(C, format!("column `{}` given twice", c.field)));
+        }
+        c.values.sort();
+        c.values.dedup();
+        if !c.values.is_empty() {
+            out.push(c);
+        }
+    }
+    Ok(out)
+}
+
 fn merge_filter(base: &lightcraft_catalog::Filter, patch: &Value, c: &str) -> Result<lightcraft_catalog::Filter> {
     let mut v = serde_json::to_value(base).unwrap_or_default();
     lightcraft_develop::presets::deep_merge(&mut v, patch);
