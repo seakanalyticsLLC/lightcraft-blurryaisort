@@ -305,5 +305,9 @@
   "Inside the range ({n} photos):": "У діапазоні (фото: {n}):",
   "Outside the range ({n} photos):": "Поза діапазоном (фото: {n}):",
   "{n} photos without a score are left as they are.": "Фото без оцінки ({n}) залишаються без змін.",
-  "Blur Cull: {inside} inside the range, {outside} outside, {changed} flags changed": "Blur Cull: у діапазоні {inside}, поза ним {outside}, змінено позначок: {changed}"
+  "Blur Cull: {inside} inside the range, {outside} outside, {changed} flags changed": "Blur Cull: у діапазоні {inside}, поза ним {outside}, змінено позначок: {changed}",
+  "{up} and faster": "{up} і коротші",
+  "Slower than {prev}": "Довші за {prev}",
+  "Window for {which}:": "Діапазон для {which}:",
+  "{n} in · {m} out": "{n} у діапазоні · {m} поза ним"
 }

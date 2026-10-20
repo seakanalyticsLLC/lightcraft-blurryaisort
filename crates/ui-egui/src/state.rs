@@ -888,6 +888,10 @@ pub struct UiState {
     pub navigator: bool,
     /// App preferences (Settings dialog).
     pub settings: AppSettings,
+    /// Photo ▸ Blur Cull…'s shutter brackets, kept for next time. Read leniently: brackets that aren't read as the
+    /// defaults.
+    #[serde(deserialize_with = "crate::panels::blur_cull::Brackets::lenient")]
+    pub blur_brackets: crate::panels::blur_cull::Brackets,
     /// Window full screen requested (⇧⌘F); the host applies it (`None` = no change pending).
     #[serde(skip)]
     pub window_fullscreen: Option<bool>,
@@ -1102,6 +1106,8 @@ pub enum Dialog {
         max: f32,
         inside: String,
         outside: String,
+        /// Windows by shutter speed (`min..max` is then the window for photos without a known one).
+        brackets: crate::panels::blur_cull::Brackets,
     },
     /// Help ▸ System Info: (label, value) rows.
     DenoiseModel {
@@ -1385,6 +1391,7 @@ impl Default for UiState {
             layout_image: LayoutImage::default(),
             navigator: true,
             settings: AppSettings::default(),
+            blur_brackets: crate::panels::blur_cull::Brackets::default(),
             window_fullscreen: None,
             filter_bar: false,
             local_roots: Vec::new(),

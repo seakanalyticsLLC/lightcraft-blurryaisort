@@ -305,5 +305,9 @@
   "Inside the range ({n} photos):": "V rozsahu (fotky: {n}):",
   "Outside the range ({n} photos):": "Mimo rozsah (fotky: {n}):",
   "{n} photos without a score are left as they are.": "Fotky bez hodnocení ({n}) zůstanou beze změny.",
-  "Blur Cull: {inside} inside the range, {outside} outside, {changed} flags changed": "Blur Cull: v rozsahu {inside}, mimo {outside}, změněné značky: {changed}"
+  "Blur Cull: {inside} inside the range, {outside} outside, {changed} flags changed": "Blur Cull: v rozsahu {inside}, mimo {outside}, změněné značky: {changed}",
+  "{up} and faster": "{up} a rychlejší",
+  "Slower than {prev}": "Pomalejší než {prev}",
+  "Window for {which}:": "Rozsah pro {which}:",
+  "{n} in · {m} out": "{n} v rozsahu · {m} mimo"
 }

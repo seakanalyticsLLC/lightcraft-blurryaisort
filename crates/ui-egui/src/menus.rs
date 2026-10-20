@@ -1452,8 +1452,13 @@ pub fn run_ui_command(app: &mut LightcraftApp, id: &str, p: &Value) -> Option<Re
             let selection = p.get("scope").and_then(Value::as_str).map_or(app.session.selection.ids.len() > 1, |s| s == "selection");
             let num = |k: &str, d: f32| p.get(k).and_then(Value::as_f64).map_or(d, |v| v.clamp(0.0, 100.0) as f32);
             let (min, max) = (num("min", 0.0), num("max", 25.0));
+            let mut brackets = app.ui.blur_brackets.clone().normalized();
+            if let Some(on) = p.get("byShutter").and_then(Value::as_bool) {
+                brackets.on = on;
+            }
+            brackets.active = Some(0);
             app.ui.dialog =
-                Some(Dialog::BlurCull { selection, min: min.min(max), max: max.max(min), inside: "pick".into(), outside: "reject".into() });
+                Some(Dialog::BlurCull { selection, min: min.min(max), max: max.max(min), inside: "pick".into(), outside: "reject".into(), brackets });
             Ok(Value::Null)
         }
         "blur.chooseModel" => {

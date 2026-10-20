@@ -305,5 +305,9 @@
   "Inside the range ({n} photos):": "範圍內（{n} 張照片）：",
   "Outside the range ({n} photos):": "範圍外（{n} 張照片）：",
   "{n} photos without a score are left as they are.": "{n} 張沒有評分的照片保持不變。",
-  "Blur Cull: {inside} inside the range, {outside} outside, {changed} flags changed": "Blur Cull：範圍內 {inside} 張，範圍外 {outside} 張，變更了 {changed} 個旗標"
+  "Blur Cull: {inside} inside the range, {outside} outside, {changed} flags changed": "Blur Cull：範圍內 {inside} 張，範圍外 {outside} 張，變更了 {changed} 個旗標",
+  "{up} and faster": "{up} 及更快",
+  "Slower than {prev}": "慢於 {prev}",
+  "Window for {which}:": "{which} 的範圍：",
+  "{n} in · {m} out": "範圍內 {n} · 範圍外 {m}"
 }

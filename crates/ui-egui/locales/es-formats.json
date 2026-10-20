@@ -305,5 +305,9 @@
   "Inside the range ({n} photos):": "Dentro del rango ({n} fotos):",
   "Outside the range ({n} photos):": "Fuera del rango ({n} fotos):",
   "{n} photos without a score are left as they are.": "Las {n} fotos sin puntuación se dejan como están.",
-  "Blur Cull: {inside} inside the range, {outside} outside, {changed} flags changed": "Blur Cull: {inside} dentro del rango, {outside} fuera, {changed} marcas cambiadas"
+  "Blur Cull: {inside} inside the range, {outside} outside, {changed} flags changed": "Blur Cull: {inside} dentro del rango, {outside} fuera, {changed} marcas cambiadas",
+  "{up} and faster": "{up} y más rápidas",
+  "Slower than {prev}": "Más lentas que {prev}",
+  "Window for {which}:": "Rango para {which}:",
+  "{n} in · {m} out": "{n} dentro · {m} fuera"
 }

@@ -13,6 +13,30 @@ It is a learned, subject-aware companion to **Assisted Culling** (Photo ▸ Assi
 focus score is a classical measure of the sharpest area at thumbnail size. Blur Cull uses a model trained on your
 own photos, at a larger analysis size (long edge 1600). It also knows where the subject is.
 
+## By shutter speed
+
+A slow pan is never as crisp as a 1/1000 frame, so one window for every photo either culls good pans or keeps soft
+fast frames. Tick **By Shutter Speed** and each range of shutter speeds gets its own window. The defaults:
+
+| Shutter speed | Keep | |
+|---|---|---|
+| 1/500 and faster | 0–15 | should be tack sharp |
+| 1/500 – 1/60 | 0–25 | a little give |
+| 1/60 – 1/15 | 0–40 | pans, handheld low light |
+| Slower than 1/15 | 0–60 | slow pans, intentional camera movement |
+| Unknown shutter speed | the dialog's own window | scans, exports without metadata |
+
+- Each bracket runs from just slower than the bracket above it down to its limit, inclusive: a 1/500 frame is in
+  "1/500 and faster", a 1/400 frame in "1/500 – 1/60".
+- Click a row's button to put that bracket's photos on the histogram; the handles, From/To and the preset buttons
+  then set that bracket's window. Each row shows how many of its photos fall inside and outside.
+- Pick a bracket's limit from its menu (third stops, limited to the speeds between its neighbours). **Add Bracket**
+  adds one a stop slower than the last limit; **−** removes one, and the bracket below takes its speeds. The last
+  bracket always takes every slower speed. Up to 8 brackets.
+- The brackets are saved with the app's settings (`ui.json`) and come back the next time the dialog opens.
+- The shutter speed is the one in the photo's metadata (the Shutter Speed field in Metadata). The model doesn't see
+  it: the score measures blur the same way for every photo, and the brackets only move where the line is drawn.
+
 ## Where the subject is
 
 1. The camera's **focus point**, when the file records one ([focus-points.md](focus-points.md)).
@@ -53,13 +77,24 @@ never a crash.
 | `blur.model.install {path}` / `blur.model.remove` | install (after checking) or delete the model file |
 | `blur.scan {ids? \| scope?: selection \| view, rescan?, wait?}` | score in the background; `wait: true` for scripts |
 | `blur.pump {pace?}` | called by the app every frame; collects results |
-| `blur.scores {ids? \| scope?, photos?: bool, min?, max?}` | scores, a 20-bin histogram, counts inside / outside a window |
-| `blur.apply {min, max, inRange?, outOfRange?, ids? \| scope?}` | flag (`pick` / `reject` / `none` / `keep`), one undo step |
-| `dialog.blurCull {scope?, min?, max?}` (UI) | opens the dialog |
+| `blur.scores {ids? \| scope?, photos?: bool, min?, max?, brackets?}` | scores, a 20-bin histogram, counts inside / outside a window; with `brackets`, the same for each bracket and for `unknownShutter` |
+| `blur.apply {min, max, brackets?, inRange?, outOfRange?, ids? \| scope?}` | flag (`pick` / `reject` / `none` / `keep`), one undo step; with `brackets`, counts `byBracket` and `unknownShutter` |
+| `dialog.blurCull {scope?, min?, max?, byShutter?}` (UI) | opens the dialog |
+
+`brackets` is a list, fastest first, of `{upTo, min, max}`. `upTo` is the bracket's slowest shutter speed, as the
+camera writes it (`"1/60"`, `"2"`) or in seconds. Only the last bracket may leave it out, to take every slower
+speed. With brackets, `min`..`max` is the window for photos without a known shutter speed (or slower than every
+bracket).
 
 A script culling a folder through the control channel:
 
 ```json
 {"id":1,"method":"engine.execute","params":{"command":"blur.scan","params":{"scope":"view","wait":true}}}
 {"id":2,"method":"engine.execute","params":{"command":"blur.apply","params":{"scope":"view","min":0,"max":20,"inRange":"pick","outOfRange":"reject"}}}
+```
+
+The same cull by shutter speed:
+
+```json
+{"id":3,"method":"engine.execute","params":{"command":"blur.apply","params":{"scope":"view","min":0,"max":25,"brackets":[{"upTo":"1/500","min":0,"max":15},{"upTo":"1/60","min":0,"max":25},{"upTo":"1/15","min":0,"max":40},{"min":0,"max":60}]}}}
 ```

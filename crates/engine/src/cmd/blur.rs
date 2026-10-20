@@ -22,10 +22,61 @@ fn photos(s: &mut Session, p: &Value, cmd: &str) -> Result<Vec<lightcraft_catalo
     }
 }
 
+/// Most brackets a cull takes.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+const MAX_BRACKETS: usize = 16;
+
+/// `brackets`: `[{upTo?, min, max}]`, fastest first. `upTo` is the bracket's slowest shutter speed, as cameras write it
+/// (`"1/60"`, `"2"`) or in seconds; each bracket starts just slower than the one before. Only the last may leave
+/// `upTo` out: it takes every slower speed.
+#[cfg(not(target_arch = "wasm32"))]
+fn brackets(p: &Value, cmd: &str) -> Result<Vec<crate::blur_cull::Bracket>> {
+    let list = match p.get("brackets") {
+        None | Some(Value::Null) => return Ok(Vec::new()),
+        Some(Value::Array(a)) => a,
+        Some(_) => return Err(bad(cmd, "`brackets` must be a list of {upTo?, min, max}")),
+    };
+    if list.len() > MAX_BRACKETS {
+        return Err(bad(cmd, format!("at most {MAX_BRACKETS} `brackets`")));
+    }
+    let mut out: Vec<crate::blur_cull::Bracket> = Vec::with_capacity(list.len());
+    for (i, b) in list.iter().enumerate() {
+        let num = |k: &str| b.get(k).and_then(Value::as_f64).filter(|v| v.is_finite());
+        let (Some(min), Some(max)) = (num("min"), num("max")) else {
+            return Err(bad(cmd, format!("`brackets[{i}]` needs numbers `min` and `max`")));
+        };
+        if min > max {
+            return Err(bad(cmd, format!("`brackets[{i}]`: `min` must be ≤ `max`")));
+        }
+        let up_to = match b.get("upTo") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(t)) => Some(
+                lightcraft_catalog::parse_shutter_seconds(t)
+                    .ok_or_else(|| bad(cmd, format!("`brackets[{i}].upTo` needs a shutter speed like 1/60 or 2, not {t}")))?,
+            ),
+            Some(v) => Some(
+                v.as_f64()
+                    .filter(|t| t.is_finite() && *t > 0.0)
+                    .ok_or_else(|| bad(cmd, format!("`brackets[{i}].upTo` needs a shutter speed like 1/60 or 2, not {v}")))?,
+            ),
+        };
+        if up_to.is_none() && i + 1 < list.len() {
+            return Err(bad(cmd, format!("`brackets[{i}]` needs `upTo`: only the last bracket can take every slower speed")));
+        }
+        if let (Some(t), Some(prev)) = (up_to, out.last().and_then(|b| b.up_to))
+            && t <= prev
+        {
+            return Err(bad(cmd, format!("`brackets[{i}].upTo` must be slower than the bracket before it")));
+        }
+        out.push(crate::blur_cull::Bracket { up_to, min, max });
+    }
+    Ok(out)
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 mod native {
     use super::*;
-    use crate::blur_cull::{self, Action};
+    use crate::blur_cull::{self, Action, Windows};
     use lightcraft_catalog::Flag;
 
     pub(super) fn status(s: &mut Session, _: &Value) -> Result<Value> {
@@ -64,12 +115,14 @@ mod native {
     }
 
     pub(super) fn scores(s: &mut Session, p: &Value) -> Result<Value> {
-        let ids = photos(s, p, "blur.scores")?;
+        const C: &str = "blur.scores";
+        let ids = photos(s, p, C)?;
         let window = match (p.get("min").and_then(Value::as_f64), p.get("max").and_then(Value::as_f64)) {
             (Some(a), Some(b)) => Some((a, b)),
             _ => None,
         };
-        Ok(blur_cull::scores(s, &ids, super::super::bool_or(p, "photos", true), window))
+        let windows = Windows { brackets: super::brackets(p, C)?, other: window };
+        Ok(blur_cull::scores(s, &ids, super::super::bool_or(p, "photos", true), &windows))
     }
 
     pub(super) fn apply(s: &mut Session, p: &Value) -> Result<Value> {
@@ -83,8 +136,9 @@ mod native {
             .ok_or_else(|| bad(C, "`inRange` must be pick | reject | none | keep"))?;
         let outside = Action::parse(super::super::str_param(p, "outOfRange"), Action::Flag(Flag::Reject))
             .ok_or_else(|| bad(C, "`outOfRange` must be pick | reject | none | keep"))?;
+        let windows = Windows { brackets: super::brackets(p, C)?, other: Some((min, max)) };
         let ids = photos(s, p, C)?;
-        blur_cull::apply(s, &ids, min, max, inside, outside)
+        blur_cull::apply(s, &ids, &windows, inside, outside)
     }
 }
 
@@ -162,7 +216,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Blur Scores",
             [],
             None,
-            "{ids?, scope?: selection | view, photos?: bool (true), min?, max?} → {photos?: [{id, score, background, subject: focus | faces | auto} | {id, score: null, unscored: true}], histogram: [20 counts over 0..100], scored, noDetail, unscored, total, model, inRange?, outOfRange?} — `photos: false` leaves the list out (the dialog asks every frame); with min and max, how many scored photos fall inside / outside — the photos' subject blur scores from the installed model (a score from another model, or for a photo whose file changed, counts as unscored)",
+            "{ids?, scope?: selection | view, photos?: bool (true), min?, max?, brackets?: [{upTo?, min, max}]} → {photos?: [{id, score, background, subject: focus | faces | auto, bracket?} | {id, score: null, unscored: true, bracket?}], histogram: [20 counts over 0..100], scored, noDetail, unscored, total, model, inRange?, outOfRange?, brackets?: [{histogram, scored, noDetail, unscored, inRange, outOfRange}], unknownShutter?: {histogram, scored, noDetail, unscored, inRange?, outOfRange?}} — `photos: false` leaves the list out (the dialog asks every frame); with min and max, how many scored photos fall inside / outside; with shutter `brackets` (as blur.apply), each photo is counted against its bracket's window and min..max covers the photos without a known shutter speed — the photos' subject blur scores from the installed model (a score from another model, or for a photo whose file changed, counts as unscored)",
             always,
             native::scores
         ),
@@ -171,7 +225,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Blur Cull",
             [],
             None,
-            "{min, max, inRange?: pick | reject | none | keep (pick), outOfRange?: pick | reject | none | keep (reject), ids?, scope?} → {inRange, outOfRange, notScored, changed} — flag the photos whose subject blur score is within min..max (0..100, inclusive) one way and the others another, in one undo step; photos without a score are left alone",
+            "{min, max, brackets?: [{upTo?, min, max}], inRange?: pick | reject | none | keep (pick), outOfRange?: pick | reject | none | keep (reject), ids?, scope?} → {inRange, outOfRange, notScored, changed, byBracket?: [{inRange, outOfRange}], unknownShutter?: {inRange, outOfRange}} — flag the photos whose subject blur score is within min..max (0..100, inclusive) one way and the others another, in one undo step; photos without a score are left alone. Shutter `brackets` (fastest first) give each range of shutter speeds its own window, so a slow pan can be kept softer than a fast frame: `upTo` is the bracket's slowest speed (\"1/60\", \"2\" or a number of seconds), each bracket starts just slower than the one before, and only the last may leave `upTo` out to take every slower speed; min..max is then the window for photos without a known shutter speed (or slower than every bracket)",
             always,
             native::apply
         ),

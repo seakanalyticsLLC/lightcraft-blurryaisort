@@ -11,6 +11,8 @@
 //! - **Scores** are kept beside the library in [`STORE_FILE`], not in the catalog: a catalog opened by a build without
 //!   Blur Cull is unchanged. A score is used only while the photo's content and the model are the ones that made it.
 //! - **Applying** the window (`blur.apply`) flags photos in one undo step; photos without a usable score are left alone.
+//!   Optional **shutter brackets** ([`Bracket`]) give each range of shutter speeds its own window: a 1/15 pan can be
+//!   kept at a softness a 1/1000 frame would be culled for.
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
@@ -480,52 +482,138 @@ pub(crate) fn remove(s: &mut Session) -> Result<Value> {
     }
 }
 
-/// Scores of `ids` (listed when `list`) and their histogram; with `window`, how many fall inside and outside it.
-pub(crate) fn scores(s: &mut Session, ids: &[PhotoId], list: bool, window: Option<(f64, f64)>) -> Value {
-    follow_library(s);
-    let mid = current_model_id(s);
-    let mut hist = [0u64; BINS];
-    let (mut scored, mut no_detail, mut unscored) = (0u64, 0u64, 0u64);
-    let (mut inside, mut outside) = (0u64, 0u64);
-    let mut photos = Vec::with_capacity(if list { ids.len() } else { 0 });
-    for id in ids {
-        match fresh(s, *id, mid.as_deref()) {
-            Some(e) => {
-                if let Some(v) = e.s {
-                    scored += 1;
-                    if let Some((lo, hi)) = window {
-                        if (lo..=hi).contains(&v) {
-                            inside += 1;
-                        } else {
-                            outside += 1;
-                        }
-                    }
-                    let bin = ((v / 100.0 * BINS as f64).floor().max(0.0) as usize).min(BINS - 1);
-                    if let Some(h) = hist.get_mut(bin) {
-                        *h += 1;
-                    }
-                } else {
-                    no_detail += 1;
-                }
-                if list {
-                    photos.push(json!({"id": id.0, "score": e.s, "background": e.b, "subject": e.from}));
-                }
-            }
-            None => {
-                unscored += 1;
-                if list {
-                    photos.push(json!({"id": id.0, "score": Value::Null, "unscored": true}));
-                }
-            }
+/// A keep window for the photos taken at a range of shutter speeds: a slow pan is never as crisp as a 1/1000 frame,
+/// so it can be given more room (`brackets` of `blur.scores` / `blur.apply`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Bracket {
+    /// The slowest exposure in the bracket, in seconds; it starts just slower than the bracket before it. `None`:
+    /// every slower speed.
+    pub(crate) up_to: Option<f64>,
+    pub(crate) min: f64,
+    pub(crate) max: f64,
+}
+
+/// The windows a cull uses: one per shutter bracket (fastest first), and `other` for photos whose shutter speed isn't
+/// recorded or is slower than every bracket (`None`: no window for them).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct Windows {
+    pub(crate) brackets: Vec<Bracket>,
+    pub(crate) other: Option<(f64, f64)>,
+}
+
+impl Windows {
+    /// The bracket a photo taken at `shutter` seconds falls in (`None`: `other`).
+    fn group(&self, shutter: Option<f64>) -> Option<usize> {
+        let t = shutter?;
+        // `1/500` written by the camera and typed by the user are the same number; the margin only absorbs rounding
+        self.brackets.iter().position(|b| b.up_to.is_none_or(|u| t <= u * (1.0 + 1e-6)))
+    }
+
+    fn window(&self, group: Option<usize>) -> Option<(f64, f64)> {
+        match group {
+            Some(i) => self.brackets.get(i).map(|b| (b.min, b.max)),
+            None => self.other,
         }
     }
-    let mut v = json!({"histogram": hist, "scored": scored, "noDetail": no_detail, "unscored": unscored, "total": ids.len(), "model": mid});
+}
+
+/// The photo's shutter speed in seconds, when its metadata records one.
+fn shutter_of(s: &Session, id: PhotoId) -> Option<f64> {
+    s.catalog.photo(id).and_then(|p| lightcraft_catalog::parse_shutter_seconds(&p.meta.shutter))
+}
+
+/// Counts for one group of photos (all of them, a shutter bracket, or the photos without a known shutter speed).
+#[derive(Default)]
+struct Tally {
+    hist: [u64; BINS],
+    scored: u64,
+    no_detail: u64,
+    unscored: u64,
+    inside: u64,
+    outside: u64,
+}
+
+impl Tally {
+    fn add(&mut self, score: Option<Option<f64>>, window: Option<(f64, f64)>) {
+        let Some(score) = score else {
+            self.unscored += 1;
+            return;
+        };
+        let Some(v) = score else {
+            self.no_detail += 1;
+            return;
+        };
+        self.scored += 1;
+        if let Some((lo, hi)) = window {
+            if (lo..=hi).contains(&v) {
+                self.inside += 1;
+            } else {
+                self.outside += 1;
+            }
+        }
+        let bin = ((v / 100.0 * BINS as f64).floor().max(0.0) as usize).min(BINS - 1);
+        if let Some(h) = self.hist.get_mut(bin) {
+            *h += 1;
+        }
+    }
+
+    fn json(&self, window: bool) -> Value {
+        let mut v = json!({"histogram": self.hist, "scored": self.scored, "noDetail": self.no_detail, "unscored": self.unscored});
+        if window {
+            v["inRange"] = json!(self.inside);
+            v["outOfRange"] = json!(self.outside);
+        }
+        v
+    }
+}
+
+/// Scores of `ids` (listed when `list`) and their histogram; with windows, how many fall inside and outside them (and,
+/// with shutter brackets, the same for each bracket and for the photos without a known shutter speed).
+pub(crate) fn scores(s: &mut Session, ids: &[PhotoId], list: bool, windows: &Windows) -> Value {
+    follow_library(s);
+    let mid = current_model_id(s);
+    let bracketed = !windows.brackets.is_empty();
+    let mut all = Tally::default();
+    let mut groups: Vec<Tally> = windows.brackets.iter().map(|_| Tally::default()).collect();
+    let mut other = Tally::default();
+    let mut photos = Vec::with_capacity(if list { ids.len() } else { 0 });
+    for id in ids {
+        let entry = fresh(s, *id, mid.as_deref());
+        let score = entry.map(|e| e.s);
+        let group = if bracketed { windows.group(shutter_of(s, *id)) } else { None };
+        let window = windows.window(group);
+        all.add(score, window);
+        if bracketed {
+            match group.and_then(|g| groups.get_mut(g)) {
+                Some(t) => t.add(score, window),
+                None => other.add(score, window),
+            }
+        }
+        if list {
+            let mut p = match entry {
+                Some(e) => json!({"id": id.0, "score": e.s, "background": e.b, "subject": e.from}),
+                None => json!({"id": id.0, "score": Value::Null, "unscored": true}),
+            };
+            if bracketed {
+                p["bracket"] = json!(group);
+            }
+            photos.push(p);
+        }
+    }
+    let mut v = json!({
+        "histogram": all.hist, "scored": all.scored, "noDetail": all.no_detail, "unscored": all.unscored,
+        "total": ids.len(), "model": mid,
+    });
     if list {
         v["photos"] = Value::Array(photos);
     }
-    if window.is_some() {
-        v["inRange"] = json!(inside);
-        v["outOfRange"] = json!(outside);
+    if windows.other.is_some() || bracketed {
+        v["inRange"] = json!(all.inside);
+        v["outOfRange"] = json!(all.outside);
+    }
+    if bracketed {
+        v["brackets"] = groups.iter().map(|t| t.json(true)).collect();
+        v["unknownShutter"] = other.json(windows.other.is_some());
     }
     v
 }
@@ -550,22 +638,37 @@ impl Action {
     }
 }
 
-/// Flag `ids` by whether their score is within `min..=max`: one undo step.
-pub(crate) fn apply(s: &mut Session, ids: &[PhotoId], min: f64, max: f64, inside: Action, outside: Action) -> Result<Value> {
+/// Flag `ids` by whether their score is within their window (the window of their shutter bracket, else
+/// `windows.other`): one undo step. Photos without a score, or without a window, are left alone.
+pub(crate) fn apply(s: &mut Session, ids: &[PhotoId], windows: &Windows, inside: Action, outside: Action) -> Result<Value> {
     follow_library(s);
     let mid = current_model_id(s);
+    let bracketed = !windows.brackets.is_empty();
     let (mut n_in, mut n_out, mut skipped) = (0u64, 0u64, 0u64);
+    let mut per: Vec<(u64, u64)> = vec![(0, 0); windows.brackets.len()];
+    let mut other = (0u64, 0u64);
     let mut ops = Vec::new();
     for id in ids {
         let Some(score) = fresh(s, *id, mid.as_deref()).and_then(|e| e.s) else {
             skipped += 1;
             continue;
         };
+        let group = if bracketed { windows.group(shutter_of(s, *id)) } else { None };
+        let Some((min, max)) = windows.window(group) else {
+            skipped += 1;
+            continue;
+        };
         let within = (min..=max).contains(&score);
+        let count = match group.and_then(|g| per.get_mut(g)) {
+            Some(c) => c,
+            None => &mut other,
+        };
         if within {
             n_in += 1;
+            count.0 += 1;
         } else {
             n_out += 1;
+            count.1 += 1;
         }
         let Action::Flag(f) = (if within { inside } else { outside }) else { continue };
         if s.catalog.photo(*id).is_some_and(|p| p.flag != f) {
@@ -576,7 +679,12 @@ pub(crate) fn apply(s: &mut Session, ids: &[PhotoId], min: f64, max: f64, inside
     if !ops.is_empty() {
         s.commit("Blur Cull", Op::Batch { ops })?;
     }
-    Ok(json!({"inRange": n_in, "outOfRange": n_out, "notScored": skipped, "changed": changed}))
+    let mut v = json!({"inRange": n_in, "outOfRange": n_out, "notScored": skipped, "changed": changed});
+    if bracketed {
+        v["byBracket"] = per.iter().map(|(i, o)| json!({"inRange": i, "outOfRange": o})).collect();
+        v["unknownShutter"] = json!({"inRange": other.0, "outOfRange": other.1});
+    }
+    Ok(v)
 }
 
 #[cfg(test)]

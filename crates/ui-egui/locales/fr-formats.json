@@ -305,5 +305,9 @@
   "Inside the range ({n} photos):": "Dans la plage ({n} photos) :",
   "Outside the range ({n} photos):": "Hors de la plage ({n} photos) :",
   "{n} photos without a score are left as they are.": "Les {n} photos sans note restent telles quelles.",
-  "Blur Cull: {inside} inside the range, {outside} outside, {changed} flags changed": "Blur Cull : {inside} dans la plage, {outside} hors plage, {changed} marqueurs modifiés"
+  "Blur Cull: {inside} inside the range, {outside} outside, {changed} flags changed": "Blur Cull : {inside} dans la plage, {outside} hors plage, {changed} marqueurs modifiés",
+  "{up} and faster": "{up} et plus rapides",
+  "Slower than {prev}": "Plus lentes que {prev}",
+  "Window for {which}:": "Plage pour {which} :",
+  "{n} in · {m} out": "{n} dans la plage · {m} hors"
 }

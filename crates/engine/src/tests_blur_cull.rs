@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 
 use lightcraft_catalog::{Flag, PhotoId};
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::{AiModel, ErrorKind, Session, blur_cull};
 
@@ -153,4 +153,77 @@ fn scores_survive_on_disk_and_a_damaged_file_starts_afresh() {
     let mut s = Session::with_demo();
     // a session reading the damaged file doesn't fail
     let _ = s.execute("blur.scores", &json!({"scope": "view"})).unwrap();
+}
+
+#[test]
+fn shutter_brackets_give_slow_shutter_speeds_their_own_window() {
+    let d = scratch("brackets");
+    let mut s = with_model(&d);
+    let mid = s.execute("blur.model.status", &json!({})).unwrap()["model"]["id"].as_str().unwrap().to_string();
+    let v: Vec<PhotoId> = s.visible_cloned().into_iter().take(5).collect();
+    // (shutter, score): a fast frame a little soft, a 1/500 frame, a 1/30 pan, a 2 s pan, and a photo with no shutter
+    // speed recorded
+    for (id, (shutter, score)) in v.iter().zip([("1/1000", 18.0), ("1/500", 12.0), ("1/30", 35.0), ("2\"", 55.0), ("", 30.0)]) {
+        let mut m = s.catalog.photo(*id).unwrap().meta.clone();
+        m.shutter = shutter.to_string();
+        s.commit("t", lightcraft_catalog::Op::SetMeta { id: *id, meta: Box::new(m) }).unwrap();
+        blur_cull::set_score(&mut s, *id, Some(score), &mid);
+    }
+    let ids: Vec<u64> = v.iter().map(|i| i.0).collect();
+    let brackets = json!([
+        {"upTo": "1/500", "min": 0, "max": 15},
+        {"upTo": 1.0 / 60.0, "min": 0, "max": 25},
+        {"upTo": "1/15", "min": 0, "max": 40},
+        {"min": 0, "max": 60},
+    ]);
+
+    // one window for all: only the two fast frames are kept
+    let one = s.execute("blur.scores", &json!({"ids": ids, "photos": false, "min": 0, "max": 25})).unwrap();
+    assert_eq!((one["inRange"].as_u64(), one["outOfRange"].as_u64()), (Some(2), Some(3)), "{one}");
+    assert!(one.get("brackets").is_none(), "{one}");
+
+    // by shutter speed: the pans are kept, the soft 1/1000 frame isn't, and the photo without a shutter speed
+    // goes by min..max
+    let q = s.execute("blur.scores", &json!({"ids": ids, "photos": true, "min": 0, "max": 25, "brackets": brackets})).unwrap();
+    assert_eq!((q["inRange"].as_u64(), q["outOfRange"].as_u64()), (Some(3), Some(2)), "{q}");
+    let per: Vec<(u64, u64, u64)> = q["brackets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|b| (b["scored"].as_u64().unwrap(), b["inRange"].as_u64().unwrap(), b["outOfRange"].as_u64().unwrap()))
+        .collect();
+    assert_eq!(per, [(2, 1, 1), (0, 0, 0), (1, 1, 0), (1, 1, 0)], "{q}");
+    assert_eq!((q["unknownShutter"]["scored"].as_u64(), q["unknownShutter"]["outOfRange"].as_u64()), (Some(1), Some(1)), "{q}");
+    let hist: u64 = q["brackets"][0]["histogram"].as_array().unwrap().iter().map(|v| v.as_u64().unwrap()).sum();
+    assert_eq!(hist, 2, "each bracket has its own histogram");
+    let which: Vec<Value> = q["photos"].as_array().unwrap().iter().map(|p| p["bracket"].clone()).collect();
+    assert_eq!(which, [json!(0), json!(0), json!(2), json!(3), Value::Null]);
+
+    let r = s.execute("blur.apply", &json!({"ids": ids, "min": 0, "max": 25, "brackets": brackets})).unwrap();
+    assert_eq!((r["inRange"].as_u64(), r["outOfRange"].as_u64(), r["notScored"].as_u64()), (Some(3), Some(2), Some(0)), "{r}");
+    assert_eq!(r["byBracket"][0], json!({"inRange": 1, "outOfRange": 1}), "{r}");
+    assert_eq!(r["unknownShutter"], json!({"inRange": 0, "outOfRange": 1}), "{r}");
+    let flags: Vec<Flag> = v.iter().map(|i| s.catalog.photo(*i).unwrap().flag).collect();
+    assert_eq!(flags, [Flag::Reject, Flag::Pick, Flag::Pick, Flag::Pick, Flag::Reject]);
+
+    // without an open-ended last bracket, a speed slower than every bracket goes by min..max too
+    let r = s
+        .execute("blur.scores", &json!({"ids": ids, "photos": false, "min": 0, "max": 25, "brackets": [{"upTo": "1/15", "min": 0, "max": 40}]}))
+        .unwrap();
+    assert_eq!(r["unknownShutter"]["scored"].as_u64(), Some(2), "{r}");
+
+    for bad in [
+        json!("1/60"),
+        json!([{"upTo": "1/60", "min": 0}]),
+        json!([{"upTo": "1/60", "min": 30, "max": 10}]),
+        json!([{"upTo": "fast", "min": 0, "max": 10}]),
+        json!([{"upTo": -2, "min": 0, "max": 10}]),
+        json!([{"min": 0, "max": 10}, {"upTo": "1/60", "min": 0, "max": 10}]),
+        json!([{"upTo": "1/60", "min": 0, "max": 10}, {"upTo": "1/500", "min": 0, "max": 10}]),
+        json!([{"upTo": "1/60", "min": 0, "max": 10}, {"upTo": "1/60", "min": 0, "max": 20}]),
+        Value::Array(vec![json!({"upTo": "1/60", "min": 0, "max": 10}); 17]),
+    ] {
+        assert!(s.execute("blur.apply", &json!({"ids": ids, "min": 0, "max": 25, "brackets": bad})).is_err(), "{bad}");
+        assert!(s.execute("blur.scores", &json!({"ids": ids, "brackets": bad})).is_err(), "{bad}");
+    }
 }

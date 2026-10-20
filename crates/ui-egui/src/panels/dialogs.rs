@@ -338,7 +338,9 @@ pub fn show(app: &mut LightcraftApp, ctx: &egui::Context) {
                         egui::RichText::new(crate::i18n::tr_format!("Creates {} stacks from {} of {scope}", preview["stacks"], preview["photos"], scope = crate::i18n::tr(scope))).color(t.text_dim),
                     );
                 }
-                Dialog::BlurCull { selection, min, max, inside, outside } => crate::panels::blur_cull::body(app, ui, selection, min, max, inside, outside),
+                Dialog::BlurCull { selection, min, max, inside, outside, brackets } => {
+                    crate::panels::blur_cull::body(app, ui, selection, min, max, inside, outside, brackets)
+                }
                 Dialog::Cull { reject_below, pick_best } => {
                     let n = app.session.selection.ids.len();
                     let scope = if n > 1 { crate::i18n::tr_format!("the {n} selected photos", n = n) } else { crate::i18n::tr_format!("the {} photos in view", app.session.visible_cloned().len()) };
@@ -1879,7 +1881,9 @@ pub fn confirm_dialog(app: &mut LightcraftApp, dlg: &Dialog) -> Result<serde_jso
         Dialog::DenoiseModel { info, accepted } => crate::panels::denoise::install(app, info, *accepted),
         Dialog::FaceModel { path, info, accepted } => crate::panels::faces::install(app, path, info, *accepted),
         Dialog::AllMetadata { .. } | Dialog::SystemInfo { .. } | Dialog::WhatsNew => Ok(serde_json::Value::Null),
-        Dialog::BlurCull { selection, min, max, inside, outside } => crate::panels::blur_cull::apply(app, *selection, *min, *max, inside, outside),
+        Dialog::BlurCull { selection, min, max, inside, outside, brackets } => {
+            crate::panels::blur_cull::apply(app, *selection, *min, *max, inside, outside, brackets)
+        }
         Dialog::Cull { reject_below, pick_best } => {
             let mut p = json!({"pickBest": pick_best});
             if *reject_below > 0.0 {

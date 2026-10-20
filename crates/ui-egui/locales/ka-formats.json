@@ -305,5 +305,9 @@
   "Inside the range ({n} photos):": "დიაპაზონში ({n} ფოტო):",
   "Outside the range ({n} photos):": "დიაპაზონის გარეთ ({n} ფოტო):",
   "{n} photos without a score are left as they are.": "{n} ფოტო შეფასების გარეშე უცვლელი რჩება.",
-  "Blur Cull: {inside} inside the range, {outside} outside, {changed} flags changed": "Blur Cull: დიაპაზონში {inside}, გარეთ {outside}, შეცვლილი ნიშნები: {changed}"
+  "Blur Cull: {inside} inside the range, {outside} outside, {changed} flags changed": "Blur Cull: დიაპაზონში {inside}, გარეთ {outside}, შეცვლილი ნიშნები: {changed}",
+  "{up} and faster": "{up} და უფრო სწრაფი",
+  "Slower than {prev}": "{prev}-ზე ნელი",
+  "Window for {which}:": "დიაპაზონი — {which}:",
+  "{n} in · {m} out": "{n} დიაპაზონში · {m} გარეთ"
 }
