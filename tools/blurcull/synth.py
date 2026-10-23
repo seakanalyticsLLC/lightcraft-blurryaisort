@@ -6,7 +6,7 @@ field) and then run the camera pipeline that follows (sensor noise, in-camera sh
 blurring, every 16 x 16 cell gets an exact label.
 
 About a third of the examples are motorsport-style motion instead (pan_shot): a car-shaped region tracked sharp (or a
-little soft) against a background streaked for tens to hundreds of pixels, a missed pan where both streak, or a still
+little soft, or ghosted) against a background streaked for tens to hundreds of pixels, a missed pan where both streak, or a still
 camera with the car streaking past. Long streaks keep crisp edges across their length, so without these the network
 mistakes a panned background for sharp detail. Streaks longer than the scale's end are labelled at SIGMA_MAX (score
 100): as blurry as the scale goes.
@@ -24,7 +24,7 @@ import numpy as np
 
 import math
 
-from kernels import S_MAX, SIGMA_MAX, equivalent_sigma, random_kernel, streak_kernel
+from kernels import GHOST_SIGMA_MAX, S_MAX, SIGMA_MAX, equivalent_sigma, ghost_kernel, random_kernel, streak_kernel
 from net import LUMA, STRIDE
 
 CELL = STRIDE
@@ -150,10 +150,15 @@ def pan_shot(rng, lin, conf, hc: int, wc: int):
         kind = "pan"
         bg, s_bg = _streak(rng, lin, 25, 500, angle)
         q = rng.random()
-        if q < 0.45:
+        if q < 0.40:
             subj, s_subj = lin, 0.0
-        elif q < 0.85:
+        elif q < 0.70:
             subj, s_subj = _streak(rng, lin, 2, 40, angle + float(rng.normal(0, 0.05)))
+        elif q < 0.88:  # the car ghosted: a shaky or jerky pan, vibrating bodywork
+            k = ghost_kernel(rng, float(2.0 ** rng.uniform(math.log2(0.6), math.log2(GHOST_SIGMA_MAX))),
+                             angle + float(rng.normal(0, 0.1)))
+            subj = cv2.filter2D(lin, -1, k, borderType=cv2.BORDER_REFLECT)
+            s_subj = min(equivalent_sigma(k), SIGMA_MAX)
         else:
             k, _ = random_kernel(rng, sample_sigma(rng))
             subj = cv2.filter2D(lin, -1, k, borderType=cv2.BORDER_REFLECT)

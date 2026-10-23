@@ -142,11 +142,53 @@ def shake_kernel(rng: np.random.Generator, target_sigma: float) -> np.ndarray:
     return k / k.sum()
 
 
+GHOST_SIGMA_MAX = 8.0  # copies further apart than this read as separate pictures, not blur
+
+
+def ghost_kernel(rng: np.random.Generator, target_sigma: float, angle: float | None = None) -> np.ndarray:
+    """Ghosting: 2-5 crisp copies of the image, shifted along a direction at uneven strengths (shake, vibration,
+    stabilisation fighting a pan, a jerk in the pan), sometimes joined by a faint smear. Each copy keeps crisp edges,
+    so edge sharpness alone says "sharp"; the label (the copies' spread) says how unreadable it really is."""
+    if angle is None:
+        angle = float(rng.normal(0.0, math.radians(8))) if rng.random() < 0.6 else float(rng.uniform(0, math.pi))
+    n = int(rng.integers(2, 6))
+    t = np.sort(rng.uniform(0.0, 1.0, n))
+    t[0], t[-1] = 0.0, 1.0
+    w = rng.dirichlet(np.full(n, 0.9)) * 0.85 + 0.15 / n  # uneven, none vanishing
+    perp = rng.normal(0.0, 0.08, n) if rng.random() < 0.4 else np.zeros(n)  # shake is rarely perfectly straight
+    mean = (w * t).sum()
+    spread = math.sqrt(max((w * (t - mean) ** 2).sum(), 1e-9))
+    t = (t - mean) * (target_sigma / spread)
+    perp = perp * (target_sigma / spread)
+    c, s = math.cos(angle), math.sin(angle)
+    xs, ys = t * c - perp * s, t * s + perp * c
+    ext = float(max(np.abs(xs).max(), np.abs(ys).max()))
+    size = _odd(2 * ext + 5)
+    ss = 4
+    canvas = np.zeros((size * ss, size * ss), np.float32)
+    pts = [(int(round((x + size / 2) * ss)), int(round((y + size / 2) * ss))) for x, y in zip(xs, ys)]
+    for pt, wi in zip(pts, w):
+        cv2.circle(canvas, pt, ss // 2, float(wi), -1, cv2.LINE_AA)
+    if rng.random() < 0.4:  # a faint smear joining the copies
+        smear = np.zeros_like(canvas)
+        cv2.line(smear, pts[int(np.argmin(t))], pts[int(np.argmax(t))], 1.0, thickness=ss // 2, lineType=cv2.LINE_AA)
+        if smear.sum() > 0 and canvas.sum() > 0:
+            a = float(rng.uniform(0.1, 0.35))
+            canvas = (1 - a) * canvas / canvas.sum() + a * smear / smear.sum()
+    k = cv2.resize(canvas, (size, size), interpolation=cv2.INTER_AREA)
+    if k.sum() <= 0:
+        k[size // 2, size // 2] = 1
+    return (k / k.sum()).astype(np.float32)
+
+
 def random_kernel(rng: np.random.Generator, sigma: float) -> tuple[np.ndarray, str]:
     """A kernel of the given equivalent sigma, of a random physical kind."""
     if sigma < 0.05:
         return np.ones((1, 1), np.float32), "none"
-    kind = rng.choice(["gauss", "disc", "line", "shake"], p=[0.25, 0.32, 0.18, 0.25])
+    kinds, p = ["gauss", "disc", "line", "shake", "ghost"], [0.22, 0.28, 0.16, 0.20, 0.14]
+    kind = rng.choice(kinds, p=p)
+    if kind == "ghost" and not 0.4 <= sigma <= GHOST_SIGMA_MAX:
+        kind = rng.choice(kinds[:4], p=np.array(p[:4]) / sum(p[:4]))
     if kind == "gauss":
         k = gaussian_kernel(sigma, aniso=float(rng.uniform(0.5, 1.0)), angle=float(rng.uniform(0, math.pi)))
     elif kind == "disc":
@@ -156,6 +198,8 @@ def random_kernel(rng: np.random.Generator, sigma: float) -> tuple[np.ndarray, s
             k /= k.sum()
     elif kind == "line":
         k = line_kernel(sigma * math.sqrt(12.0), float(rng.uniform(0, math.pi)))
+    elif kind == "ghost":
+        k = ghost_kernel(rng, sigma)
     else:
         k = shake_kernel(rng, sigma)
     # correct small discretisation errors so the label is exact

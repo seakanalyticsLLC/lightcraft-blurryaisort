@@ -28,6 +28,8 @@ kinds of examples.
    known amount and kind of blur:
    - defocus (lens discs, including cat's-eye bokeh)
    - hand shake (random jittery trajectories)
+   - ghosting: 2–5 crisp copies shifted along a direction (shake, vibrating bodywork, stabilisation fighting a
+     pan). Each copy keeps crisp edges, so without these, ghosted lettering reads as sharp
    - motion streaks
    - soft-lens Gaussian blur
    - partial blur through a random depth mask, like shallow depth of field
