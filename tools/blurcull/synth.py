@@ -5,8 +5,9 @@ time (defocus disc, hand shake, motion streak, soft lens; sometimes only part of
 field) and then run the camera pipeline that follows (sensor noise, in-camera sharpening, JPEG). Because we did the
 blurring, every 16 x 16 cell gets an exact label.
 
-About a third of the examples are motorsport-style motion instead (pan_shot): a car-shaped region tracked sharp (or a
-little soft, or ghosted) against a background streaked for tens to hundreds of pixels, a missed pan where both streak, or a still
+About a third of the examples are motorsport-style motion instead (pan_shot): a background streaked by the pan, with
+the car either tracked perfectly (crisp, as if parked: a good pan) or tracked imperfectly (a short smear, ghosting or
+softness, labelled as the blur it is), streaked for tens to hundreds of pixels, a missed pan where both streak, or a still
 camera with the car streaking past. Long streaks keep crisp edges across their length, so without these the network
 mistakes a panned background for sharp detail. Streaks longer than the scale's end are labelled at SIGMA_MAX (score
 100): as blurry as the scale goes.
@@ -146,13 +147,13 @@ def pan_shot(rng, lin, conf, hc: int, wc: int):
     h, w = lin.shape[:2]
     angle = pan_angle(rng)
     r = rng.random()
-    if r < 0.55:  # a good pan: background streaked, the car tracked (sharp, a little behind / ahead, or soft)
+    if r < 0.55:  # a pan: the background streaked; the car crisp as if parked (a good pan) or not quite tracked
         kind = "pan"
         bg, s_bg = _streak(rng, lin, 25, 500, angle)
         q = rng.random()
-        if q < 0.40:
+        if q < 0.40:  # a good pan: the car as crisp as if it were parked
             subj, s_subj = lin, 0.0
-        elif q < 0.70:
+        elif q < 0.70:  # a little behind or ahead: a short smear along the pan
             subj, s_subj = _streak(rng, lin, 2, 40, angle + float(rng.normal(0, 0.05)))
         elif q < 0.88:  # the car ghosted: a shaky or jerky pan, vibrating bodywork
             k = ghost_kernel(rng, float(2.0 ** rng.uniform(math.log2(0.6), math.log2(GHOST_SIGMA_MAX))),

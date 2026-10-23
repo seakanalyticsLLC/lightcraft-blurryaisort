@@ -33,9 +33,9 @@ kinds of examples.
    - motion streaks
    - soft-lens Gaussian blur
    - partial blur through a random depth mask, like shallow depth of field
-   - motorsport motion (about a third of examples): a car-shaped region tracked sharp or a little soft against a
-     background streaked for 25–500 px (a pan), a missed pan where the car streaks too, or a still camera with the
-     car streaking past. Long streaks keep crisp edges across their length, so without these a panned background
+   - motorsport motion (about a third of examples): a background streaked for 25–500 px by a pan, with the car
+     either crisp as if parked (a good pan) or not quite tracked (a short smear, ghosting or softness, labelled as
+     the blur it is); a missed pan where the car streaks too; or a still camera with the car streaking past. Long streaks keep crisp edges across their length, so without these a panned background
      reads as sharp and the "sharpest part of the frame" lands on it instead of the car.
 
    It then adds sensor noise, in-camera sharpening and JPEG compression. Because the trainer did the blurring,
