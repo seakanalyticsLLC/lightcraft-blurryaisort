@@ -9,7 +9,12 @@ About a third of the examples are motorsport-style motion instead (pan_shot): a 
 the car either tracked perfectly (crisp, as if parked: a good pan) or tracked imperfectly (a short smear, ghosting or
 softness, labelled as the blur it is), streaked for tens to hundreds of pixels, a missed pan where both streak, or a still
 camera with the car streaking past. Long streaks keep crisp edges across their length, so without these the network
-mistakes a panned background for sharp detail. Streaks longer than the scale's end are labelled at SIGMA_MAX (score
+mistakes a panned background for sharp detail.
+
+A quarter of the examples are night scenes (night): darkened, with highlights and added lamps far brighter than the
+sensor's limit, so streaked lights stay saturated with hard edges like real light trails (and read as the blur they
+are), dark car bodies have nothing to judge, and lit numbers and signs carry the evidence. Elsewhere, half the
+clipped highlights get some of their lost light back (boost_highlights) for the same reason. Streaks longer than the scale's end are labelled at SIGMA_MAX (score
 100): as blurry as the scale goes.
 
 Labels:
@@ -96,10 +101,10 @@ def sample_sigma(rng):
     return 2.0 ** rng.uniform(0.05, S_MAX) - 1.0
 
 
-def camera(rng, lin):
+def camera(rng, lin, night: bool = False):
     img = to_srgb(lin)
-    if rng.random() < 0.65:  # sensor noise, brighter = more shot noise
-        n = rng.uniform(0.003, 0.04)
+    if night or rng.random() < 0.65:  # sensor noise, brighter = more shot noise (high ISO at night)
+        n = rng.uniform(0.01, 0.08) if night else rng.uniform(0.003, 0.04)
         shot = rng.normal(size=img.shape[:2]).astype(np.float32)[..., None]
         chroma = rng.normal(size=img.shape).astype(np.float32) * 0.4
         img = img + n * np.sqrt(np.clip(img, 0.02, 1)) * (shot + chroma)
@@ -185,6 +190,58 @@ def pan_shot(rng, lin, conf, hc: int, wc: int):
     return out, sig, conf, kind
 
 
+P_NIGHT = 0.25  # share of examples turned into night scenes (night)
+P_BOOST = 0.5  # share of the other examples whose clipped highlights are made brighter than the sensor's limit
+
+
+def boost_highlights(rng, lin: np.ndarray, gain: float | None = None, small_only: bool = False) -> np.ndarray:
+    """Clipped highlights were brighter than the sensor's limit: give them back some of that light, so a blurred
+    lamp, sun glint or headlight streaks into a trail that stays saturated, with hard edges, as real ones do.
+    `small_only`: only small light sources (at night a bright daytime sky must go dark with the rest)."""
+    hi = lin.max(axis=2) > 0.85
+    if small_only and hi.any():
+        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+        large = cv2.morphologyEx(hi.astype(np.uint8), cv2.MORPH_OPEN, k).astype(bool)
+        hi &= ~cv2.dilate(large.astype(np.uint8), k).astype(bool)
+    if not hi.any():
+        return lin
+    g = float(2.0 ** rng.uniform(1.0, 5.0)) if gain is None else gain
+    out = lin.copy()
+    out[hi] *= g
+    return out
+
+
+def night(rng, lin: np.ndarray, conf: np.ndarray, hc: int, wc: int):
+    """A night scene from a daylight photo: everything far darker, its highlights and a scatter of added lamps (spots
+    and strips: floodlights, signs, brake lights) much brighter than the sensor's limit. The lamps are part of the
+    sharp original, so they are blurred with everything else and labelled like it: a streaked lamp is blur."""
+    h, w = lin.shape[:2]
+    dark = float(2.0 ** rng.uniform(math.log2(0.008), math.log2(0.12)))  # about 3-7 stops under the day photo
+    out = boost_highlights(rng, lin, float(2.0 ** rng.uniform(1.0, 5.0)) / dark, small_only=True) * dark
+    lamps = np.zeros((h, w, 3), np.float32)
+    cover = np.zeros((h, w), np.float32)
+    for _ in range(int(rng.integers(5, 60))):
+        x, y = int(rng.uniform(0, w)), int(rng.uniform(0, h))
+        v = float(2.0 ** rng.uniform(0.5, 5.5))
+        tint = np.array(rng.choice([(1.0, 1.0, 1.0), (0.7, 0.85, 1.0), (0.4, 0.7, 1.0), (0.3, 0.3, 1.0), (1.0, 0.6, 0.3)]), np.float32)
+        col = tuple(float(c * v) for c in tint)
+        if rng.random() < 0.6:  # a spot
+            r = int(rng.integers(1, 4))
+            cv2.circle(lamps, (x, y), r, col, -1, cv2.LINE_AA)
+            cv2.circle(cover, (x, y), r, 1.0, -1)
+        else:  # a strip
+            L, t = int(rng.integers(4, 40)), int(rng.integers(1, 4))
+            cv2.line(lamps, (x, y), (x + L, y), col, t, cv2.LINE_AA)
+            cv2.line(cover, (x, y), (x + L, y), 1.0, t)
+    out = out + lamps
+    # detail the dark swallowed can't be judged (a black car body); a lamp's edge can, in the dark around it
+    seen = cell_detail(luma(to_srgb(np.clip(out, 0, 1)).astype(np.float32)))
+    conf = np.minimum(conf, seen)
+    lit = _cells(cover, hc, wc).mean(axis=(1, 3)) > 0.01
+    conf = np.where(lit, np.maximum(conf, 0.8), conf)
+    return out, conf
+
+
 def examples(rng, bgr8: np.ndarray, analysis_long_edge: int, crop: int, n_crops: int):
     """One blurred version of a sharp photo, cut into crops. Yields (y uint8 crop, sigma cells, conf cells, kind)."""
     long_edge = max(bgr8.shape[:2])
@@ -203,6 +260,11 @@ def examples(rng, bgr8: np.ndarray, analysis_long_edge: int, crop: int, n_crops:
     hc, wc = conf.shape
 
     lin = to_lin(base) * rng.uniform(0.6, 1.4)
+    is_night = rng.random() < P_NIGHT
+    if is_night:
+        lin, conf = night(rng, lin, conf, hc, wc)
+    elif rng.random() < P_BOOST:
+        lin = boost_highlights(rng, lin)
     if rng.random() < P_PAN:
         blurred, sig, conf, kind = pan_shot(rng, lin, conf, hc, wc)
         s = 0.0  # (no depth-of-field mask on top)
@@ -220,7 +282,9 @@ def examples(rng, bgr8: np.ndarray, analysis_long_edge: int, crop: int, n_crops:
         sig = np.clip((1 - mc) * s, 0, None).astype(np.float32)
         conf = np.where((mc > 0.15) & (mc < 0.85), conf * 0.3, conf)  # cells straddling the focus edge
         kind += "+depth"
-    y8 = (luma(camera(rng, blurred).astype(np.float32)) + 0.5).astype(np.uint8)
+    if is_night:
+        kind += "+night"
+    y8 = (luma(camera(rng, blurred, is_night).astype(np.float32)) + 0.5).astype(np.uint8)
 
     nc = crop // CELL
     for _ in range(n_crops):

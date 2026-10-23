@@ -38,6 +38,11 @@ kinds of examples.
      the blur it is); a missed pan where the car streaks too; or a still camera with the car streaking past. Long streaks keep crisp edges across their length, so without these a panned background
      reads as sharp and the "sharpest part of the frame" lands on it instead of the car.
 
+   - night (a quarter of examples): the photo darkened 3–7 stops, its small highlights and added lamps (spots and
+     strips) kept far brighter than the sensor's limit, more noise. Streaked lights stay saturated with hard
+     edges like real light trails and are labelled as the blur they are; detail the dark swallows is not judged,
+     so lit numbers and signs carry the evidence
+
    It then adds sensor noise, in-camera sharpening and JPEG compression. Because the trainer did the blurring,
    every cell's label is exact. This is where most of the learning happens, so **variety matters more than
    count**: people, landscapes, wildlife, night scenes, high and low ISO, all your cameras and lenses.
