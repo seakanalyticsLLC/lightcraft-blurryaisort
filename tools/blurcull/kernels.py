@@ -86,6 +86,24 @@ def line_kernel(length: float, angle: float) -> np.ndarray:
     return k / k.sum()
 
 
+def streak_kernel(length: float, angle: float) -> np.ndarray:
+    """A long, straight motion streak (a panned background, or a car crossing a still frame), on a tight bounding box
+    so streaks of hundreds of pixels stay cheap to build and apply."""
+    ss = 4
+    c, s = math.cos(angle), math.sin(angle)
+    w, h = _odd(abs(c) * length + 3), _odd(abs(s) * length + 3)
+    canvas = np.zeros((h * ss, w * ss), np.float32)
+    cx, cy = w * ss / 2, h * ss / 2
+    dx, dy = c * length * ss / 2, s * length * ss / 2
+    p0 = (int(round(cx - dx)), int(round(cy - dy)))
+    p1 = (int(round(cx + dx)), int(round(cy + dy)))
+    cv2.line(canvas, p0, p1, 1.0, thickness=ss, lineType=cv2.LINE_AA)
+    k = cv2.resize(canvas, (w, h), interpolation=cv2.INTER_AREA)
+    if k.sum() <= 0:
+        k[h // 2, w // 2] = 1
+    return (k / k.sum()).astype(np.float32)
+
+
 def shake_kernel(rng: np.random.Generator, target_sigma: float) -> np.ndarray:
     """Hand-shake: a random smooth trajectory with uneven dwell time, scaled to target_sigma."""
     n = 64

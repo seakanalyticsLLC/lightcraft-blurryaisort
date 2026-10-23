@@ -3,7 +3,15 @@
 Every sharp photo yields endless examples: we blur it by a known amount with a physically different kind of blur each
 time (defocus disc, hand shake, motion streak, soft lens; sometimes only part of the frame, like a shallow depth of
 field) and then run the camera pipeline that follows (sensor noise, in-camera sharpening, JPEG). Because we did the
-blurring, every 16 x 16 cell gets an exact label:
+blurring, every 16 x 16 cell gets an exact label.
+
+About a third of the examples are motorsport-style motion instead (pan_shot): a car-shaped region tracked sharp (or a
+little soft) against a background streaked for tens to hundreds of pixels, a missed pan where both streak, or a still
+camera with the car streaking past. Long streaks keep crisp edges across their length, so without these the network
+mistakes a panned background for sharp detail. Streaks longer than the scale's end are labelled at SIGMA_MAX (score
+100): as blurry as the scale goes.
+
+Labels:
 
   sigma  equivalent blur sigma in analysis pixels (kernels.py)
   conf   0..1, whether the sharp original had enough detail there for blur to be measurable at all
@@ -14,7 +22,9 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from kernels import S_MAX, equivalent_sigma, random_kernel
+import math
+
+from kernels import S_MAX, SIGMA_MAX, equivalent_sigma, random_kernel, streak_kernel
 from net import LUMA, STRIDE
 
 CELL = STRIDE
@@ -102,6 +112,73 @@ def camera(rng, lin):
     return img8
 
 
+P_PAN = 0.33  # share of examples that are pans / moving cars (pan_shot)
+
+
+def pan_angle(rng) -> float:
+    """Pans follow the car: mostly level, sometimes along a climbing or banked track, now and then vertical."""
+    r = rng.random()
+    if r < 0.05:
+        return math.pi / 2 + float(rng.normal(0.0, math.radians(6)))
+    if r < 0.20:
+        return float(rng.uniform(-math.radians(30), math.radians(30)))
+    return float(rng.normal(0.0, math.radians(6)))
+
+
+def subject_mask(rng, h: int, w: int) -> np.ndarray:
+    """Soft-edged, wider-than-tall blobs where the car (or two) is: 1 = subject, 0 = background."""
+    m = np.zeros((h, w), np.float32)
+    for _ in range(1 if rng.random() < 0.8 else 2):
+        ax = rng.uniform(0.08, 0.35) * w
+        ay = min(ax / rng.uniform(1.3, 3.5), 0.45 * h)
+        cx, cy = rng.uniform(0.15, 0.85) * w, rng.uniform(0.2, 0.8) * h
+        cv2.ellipse(m, (int(cx), int(cy)), (max(int(ax), 1), max(int(ay), 1)), float(rng.normal(0, 8)), 0, 360, 1.0, -1)
+    return cv2.GaussianBlur(m, (0, 0), rng.uniform(1.5, 5.0))
+
+
+def _streak(rng, lin, lo: float, hi: float, angle: float):
+    k = streak_kernel(2.0 ** rng.uniform(math.log2(lo), math.log2(hi)), angle)
+    return cv2.filter2D(lin, -1, k, borderType=cv2.BORDER_REFLECT), min(equivalent_sigma(k), SIGMA_MAX)
+
+
+def pan_shot(rng, lin, conf, hc: int, wc: int):
+    """Motion as motorsport shows it. Returns (blurred linear image, sigma per cell, conf per cell, kind)."""
+    h, w = lin.shape[:2]
+    angle = pan_angle(rng)
+    r = rng.random()
+    if r < 0.55:  # a good pan: background streaked, the car tracked (sharp, a little behind / ahead, or soft)
+        kind = "pan"
+        bg, s_bg = _streak(rng, lin, 25, 500, angle)
+        q = rng.random()
+        if q < 0.45:
+            subj, s_subj = lin, 0.0
+        elif q < 0.85:
+            subj, s_subj = _streak(rng, lin, 2, 40, angle + float(rng.normal(0, 0.05)))
+        else:
+            k, _ = random_kernel(rng, sample_sigma(rng))
+            subj = cv2.filter2D(lin, -1, k, borderType=cv2.BORDER_REFLECT)
+            s_subj = min(equivalent_sigma(k), SIGMA_MAX) if k.size > 1 else 0.0
+    elif r < 0.80:  # a missed pan: the car streaks too
+        kind = "pan-missed"
+        bg, s_bg = _streak(rng, lin, 25, 500, angle)
+        subj, s_subj = _streak(rng, lin, 15, 300, angle + float(rng.normal(0, 0.15)))
+    else:  # a still camera: the background sharp (or a little soft), the car streaking past
+        kind = "moving-car"
+        if rng.random() < 0.7:
+            bg, s_bg = lin, 0.0
+        else:
+            k, _ = random_kernel(rng, min(sample_sigma(rng), 2.0))
+            bg = cv2.filter2D(lin, -1, k, borderType=cv2.BORDER_REFLECT)
+            s_bg = min(equivalent_sigma(k), SIGMA_MAX) if k.size > 1 else 0.0
+        subj, s_subj = _streak(rng, lin, 10, 400, angle)
+    m = subject_mask(rng, h, w)
+    out = m[..., None] * subj + (1 - m[..., None]) * bg
+    mc = np.clip(_cells(m, hc, wc).mean(axis=(1, 3)), 0.0, 1.0)
+    sig = np.clip(mc * s_subj + (1 - mc) * s_bg, 0.0, SIGMA_MAX).astype(np.float32)
+    conf = np.where((mc > 0.15) & (mc < 0.85), conf * 0.3, conf)  # cells straddling the car's edge
+    return out, sig, conf, kind
+
+
 def examples(rng, bgr8: np.ndarray, analysis_long_edge: int, crop: int, n_crops: int):
     """One blurred version of a sharp photo, cut into crops. Yields (y uint8 crop, sigma cells, conf cells, kind)."""
     long_edge = max(bgr8.shape[:2])
@@ -120,12 +197,16 @@ def examples(rng, bgr8: np.ndarray, analysis_long_edge: int, crop: int, n_crops:
     hc, wc = conf.shape
 
     lin = to_lin(base) * rng.uniform(0.6, 1.4)
-    k, kind = random_kernel(rng, sample_sigma(rng))
-    if kind == "none":
-        blurred, s = lin, 0.0
+    if rng.random() < P_PAN:
+        blurred, sig, conf, kind = pan_shot(rng, lin, conf, hc, wc)
+        s = 0.0  # (no depth-of-field mask on top)
     else:
-        blurred, s = cv2.filter2D(lin, -1, k, borderType=cv2.BORDER_REFLECT), equivalent_sigma(k)
-    sig = np.full((hc, wc), s, np.float32)
+        k, kind = random_kernel(rng, sample_sigma(rng))
+        if kind == "none":
+            blurred, s = lin, 0.0
+        else:
+            blurred, s = cv2.filter2D(lin, -1, k, borderType=cv2.BORDER_REFLECT), equivalent_sigma(k)
+        sig = np.full((hc, wc), s, np.float32)
     if s > 0.5 and rng.random() < 0.22:
         m = depth_mask(rng, h, w)
         blurred = m[..., None] * lin + (1 - m[..., None]) * blurred
