@@ -2,6 +2,7 @@
 
     python train.py --data D:/blurcull-data                 # GPU if PyTorch sees one, else CPU
     python train.py --data D:/blurcull-data --resume        # carry on from runs/last.pt
+    python train.py --data D:/blurcull-data --cache cache-3200 --out D:/blurcull-data/runs-3200   # another size
 
 The blurred training examples are rendered on the GPU (gpu_synth.py) when PyTorch sees a CUDA card, else by CPU
 worker processes (synth.py); --synth cpu|gpu forces one. Both make the same examples (check_gpu_synth.py).
@@ -103,7 +104,7 @@ def cell_loss(out, b, c, ring=1):
     return l_blur, l_conf, mae
 
 
-_RATED: dict[str, torch.Tensor] = {}  # rated photos' luma, kept on the training device after the first read
+_RATED: dict[str, torch.Tensor] = {}  # rated photos' luma, kept on the training device after the first read (fp16)
 
 
 def load_rated(data: Path, e: dict, dev=None):
@@ -116,8 +117,9 @@ def load_rated(data: Path, e: dict, dev=None):
         if dev is not None:
             y = y.to(dev)
         if len(_RATED) < 4000:
-            _RATED[e["cache"]] = y
-    return y
+            _RATED[e["cache"]] = y.half()  # luma to 1/2048: far finer than the 8-bit photo it came from
+            return y
+    return y.float()
 
 
 def subject_b(out, subject=None):
@@ -183,6 +185,7 @@ def validate(model, val_batches, rated_val, data, dev):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--data", required=True)
+    ap.add_argument("--cache", default="cache", help="cache folder under --data written by prepare.py (default cache)")
     ap.add_argument("--out", help="checkpoint folder (default <data>/runs)")
     ap.add_argument("--steps", type=int, default=30000)
     ap.add_argument("--batch", type=int, default=64)
@@ -202,9 +205,9 @@ def main():
     a = ap.parse_args()
 
     data = Path(a.data)
-    man_path = data / "cache" / "manifest.json"
+    man_path = data / a.cache / "manifest.json"
     if not man_path.exists():
-        raise SystemExit(f"{man_path} not found: run prepare.py --data {data} first")
+        raise SystemExit(f"{man_path} not found: run prepare.py --data {data} --cache {a.cache} first")
     man = json.loads(man_path.read_text(encoding="utf-8"))
     analysis = int(man.get("analysis_long_edge", 1600))
     ents = man["entries"]

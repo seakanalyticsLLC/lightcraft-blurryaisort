@@ -71,6 +71,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("photos", nargs="*")
     ap.add_argument("--data", help="data folder: use photos from cache/manifest.json (sharp)")
+    ap.add_argument("--cache", default="cache", help="cache folder under --data (default cache)")
     ap.add_argument("--renders", type=int, default=100)
     ap.add_argument("--analysis", type=int, default=1600)
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -85,7 +86,8 @@ def main():
 
     files = [Path(p) for p in a.photos]
     if a.data:
-        man = json.loads((Path(a.data) / "cache" / "manifest.json").read_text(encoding="utf-8"))
+        man = json.loads((Path(a.data) / a.cache / "manifest.json").read_text(encoding="utf-8"))
+        a.analysis = int(man.get("analysis_long_edge", a.analysis))
         files += [Path(a.data) / e["cache"] for e in man["entries"] if e["kind"] == "sharp" and not e.get("suspect")]
     if not files:
         raise SystemExit("give photos or --data")
@@ -149,7 +151,7 @@ def bench(a):
     if not a.data:
         raise SystemExit("--bench needs --data")
     data = Path(a.data)
-    man = json.loads((data / "cache" / "manifest.json").read_text(encoding="utf-8"))
+    man = json.loads((data / a.cache / "manifest.json").read_text(encoding="utf-8"))
     analysis = int(man.get("analysis_long_edge", a.analysis))
     ents = man["entries"]
     sharp = [e["cache"] for e in ents if e["kind"] == "sharp" and not e.get("suspect") and not e["val"]]

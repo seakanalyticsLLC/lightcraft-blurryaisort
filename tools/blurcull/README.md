@@ -115,6 +115,18 @@ This writes `D:\blurcull-data\cache\` (analysis-size PNGs plus `manifest.json`) 
 
 Run it again after adding photos. Only new ones are processed.
 
+**Another analysis size** (for example 3200 px, to see finer softness): give it its own cache and checkpoint
+folder, so the 1600 setup stays as it is. Sharp photos must be at least about 1.25x that size on the long edge.
+
+```powershell
+python prepare.py --data D:\blurcull-data --analysis 3200 --sharp D:\blurcull-data\sharp-4000 --cache cache-3200
+python train.py --data D:\blurcull-data --cache cache-3200 --out D:\blurcull-data\runs-3200
+python export.py --checkpoint D:\blurcull-data\runs-3200\best.pt -o D:\blurcull-data\blurnet-3200.safetensors
+```
+
+The exported file records its analysis size; LightCraft and `score.py` analyse at that size (about 4x the time of
+1600 for 3200).
+
 ## 4. Train
 
 ```powershell

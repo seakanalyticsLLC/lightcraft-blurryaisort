@@ -12,6 +12,11 @@ Expected layout of --data (see README.md):
 JPEG / PNG / TIFF / WebP are read directly; anything else (raws, HEIC, ...) is rendered by lightcraft-cli, with
 LightCraft's default develop settings, so training sees what the app analyses. Writes <data>/cache/ and
 <data>/cache/manifest.json. Run it again after adding photos: files already cached are skipped.
+
+Another analysis size gets its own cache, so the default one stays intact (sharp photos must be at least ~1.25x the
+analysis size on the long edge; the trainer zooms around it and never enlarges):
+
+    python prepare.py --data D:/blurcull-data --analysis 3200 --sharp D:/blurcull-data/sharp-4000 --cache cache-3200
 """
 from __future__ import annotations
 
@@ -38,7 +43,7 @@ RAWISH = {
     ".arw", ".cr2", ".cr3", ".crw", ".nef", ".nrw", ".raf", ".orf", ".rw2", ".pef", ".srw", ".dng", ".3fr", ".iiq",
     ".erf", ".kdc", ".mef", ".mos", ".mrw", ".x3f", ".srf", ".sr2", ".heic", ".heif", ".hif", ".avif", ".jxl",
 }
-SHARP_LONG_EDGE = 2400  # room for the +-25 % scale jitter around the 1600 analysis size
+SHARP_LONG_EDGE = 2400  # room for the +-25 % scale jitter around the 1600 analysis size (1.5x --analysis)
 RANGE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)$")
 
 
@@ -119,21 +124,24 @@ def main():
     ap.add_argument("--cli", help="path to lightcraft-cli (default: this repo's target/release)")
     ap.add_argument("--analysis", type=int, default=1600, help="analysis long edge (must match the app; default 1600)")
     ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
+    ap.add_argument("--sharp", help="sharp photos folder (default <data>/sharp); must be inside --data")
+    ap.add_argument("--cache", default="cache", help="cache folder name under --data (default cache); one per --analysis")
     a = ap.parse_args()
 
     data = Path(a.data)
-    cache = data / "cache"
+    cache = data / a.cache
+    sharp_edge = SHARP_LONG_EDGE if a.analysis == 1600 else int(round(a.analysis * 1.5))
     cli = find_cli(a.cli)
     exts = DIRECT | RAWISH
     jobs, entries = [], {}
 
-    sharp_dir = data / "sharp"
+    sharp_dir = Path(a.sharp) if a.sharp else data / "sharp"
     for p in sorted(sharp_dir.rglob("*")) if sharp_dir.exists() else []:
         if p.suffix.lower() in exts:
-            rel = p.relative_to(data).as_posix()
+            rel = Path(os.path.relpath(p, data)).as_posix()
             dst = str(cache / "sharp" / (hashlib.sha1(rel.encode()).hexdigest()[:16] + ".png"))
             entries[str(p)] = {"file": rel, "cache": os.path.relpath(dst, data), "kind": "sharp", "val": is_val(rel)}
-            jobs.append((str(p), dst, "sharp", cli, SHARP_LONG_EDGE))
+            jobs.append((str(p), dst, "sharp", cli, sharp_edge))
 
     rated_dir = data / "rated"
     for d in sorted(x for x in rated_dir.iterdir() if x.is_dir()) if rated_dir.exists() else []:
