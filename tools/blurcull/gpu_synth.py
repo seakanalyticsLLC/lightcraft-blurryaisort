@@ -473,71 +473,112 @@ class GpuSynth:
 
 class PhotoPool:
     """Sharp photos decoded by background threads (OpenCV releases the GIL), kept in a pool and each used for a few
-    renders before it is swapped for a fresh one: the CPU only decodes a photo every few renders."""
+    renders before it is swapped for a fresh one: the CPU only decodes a photo every few renders. Thread-safe."""
 
-    def __init__(self, data: Path, files: list[str], seed: int, pool: int = 24, uses: int = 4, threads: int = 4):
+    def __init__(self, data: Path, files: list[str], seed: int, pool: int = 32, uses: int = 4, threads: int = 4):
         self.data, self.files, self.uses = data, files, uses
         self.q: queue.Queue = queue.Queue(maxsize=pool)
         self.slots: list[list] = []
         self.pool = pool
         self.rng = np.random.default_rng(seed)
-        self.stop = False
+        self.lock = threading.Lock()
         for t in range(threads):
             threading.Thread(target=self._loader, args=(seed * 7919 + t,), daemon=True).start()
 
     def _loader(self, seed):
         rng = np.random.default_rng(seed)
-        while not self.stop:
+        while True:
             f = self.files[int(rng.integers(len(self.files)))]
             img = cv2.imread(str(self.data / f), cv2.IMREAD_COLOR)
             if img is not None:
                 self.q.put(img)
 
     def get(self) -> np.ndarray:
-        while len(self.slots) < self.pool:
-            self.slots.append([self.q.get(), self.uses])
-        i = int(self.rng.integers(len(self.slots)))
-        slot = self.slots[i]
-        slot[1] -= 1
-        img = slot[0]
-        if slot[1] <= 0:
-            try:
-                self.slots[i] = [self.q.get_nowait(), self.uses]
-            except queue.Empty:
-                self.slots.pop(i)
-        return img
+        with self.lock:
+            while len(self.slots) < self.pool:
+                self.slots.append([self.q.get(), self.uses])
+            i = int(self.rng.integers(len(self.slots)))
+            slot = self.slots[i]
+            slot[1] -= 1
+            img = slot[0]
+            if slot[1] <= 0:
+                try:
+                    self.slots[i] = [self.q.get_nowait(), self.uses]
+                except queue.Empty:
+                    self.slots.pop(i)
+            return img
 
 
 class GpuBatches:
-    """Endless (x, b, conf) batches rendered on the device, like DataLoader(Synthetic(...)) in train.py."""
+    """Endless (x, b, conf) batches rendered on the device, like DataLoader(Synthetic(...)) in train.py, but ahead of
+    the training loop: `renderers` threads, each with its own CUDA stream, random generators and GpuSynth, render
+    photos into crops while the network trains. The crops land in a shuffle pool, and each batch is drawn at random
+    from it (every crop is used exactly once), so a batch mixes many photos even when each render gives 32 crops."""
 
     def __init__(self, data: Path, files: list[str], analysis: int, crop: int, batch: int, device, crops_per: int,
-                 seed: int, pool: int = 24, uses: int = 4, threads: int = 4):
-        self.synth = GpuSynth(device, seed=seed)
-        self.photos = PhotoPool(data, files, seed, pool=pool, uses=uses, threads=threads)
-        self.rng = np.random.default_rng(seed)
-        self.analysis, self.crop, self.batch, self.crops_per = analysis, crop, batch, crops_per
+                 seed: int, renderers: int = 3, pool_batches: int = 8, decoders: int = 4):
         self.dev = torch.device(device)
-        self.buf: list[tuple] = []
-        self.n_buf = 0
+        self.analysis, self.crop, self.batch, self.crops_per = analysis, crop, batch, crops_per
+        self.photos = PhotoPool(data, files, seed, threads=decoders)
+        self.pool_min = batch * pool_batches  # crops waiting before a batch is drawn: the shuffle's depth
+        self.q: queue.Queue = queue.Queue(maxsize=max(4, 2 * renderers))
+        self.error: BaseException | None = None
+        self.pick = torch.Generator(device="cpu")
+        self.pick.manual_seed(int(seed) + 17)
+        self.pool: list[torch.Tensor] | None = None
+        self.renders = 0
+        for r in range(renderers):
+            threading.Thread(target=self._renderer, args=(int(seed) * 31 + r,), daemon=True).start()
+
+    def _renderer(self, seed):
+        try:
+            synth = GpuSynth(self.dev, seed=seed)
+            rng = np.random.default_rng(seed)
+            stream = torch.cuda.Stream(self.dev) if self.dev.type == "cuda" else None
+            while True:
+                with torch.cuda.stream(stream) if stream is not None else _nullcontext():
+                    img = torch.from_numpy(self.photos.get()).to(self.dev, non_blocking=True).permute(2, 0, 1)
+                    r = synth.render(rng, img, self.analysis, self.crop)
+                    got = synth.crops(rng, r, self.crop, self.crops_per) if r is not None else None
+                if got is None:
+                    continue
+                if stream is not None:
+                    stream.synchronize()  # the crops are finished before another stream touches them
+                self.q.put(got)
+        except BaseException as e:  # surface it in the training loop instead of hanging it
+            self.error = e
+            self.q.put(None)
+
+    def _take(self):
+        got = self.q.get()
+        if got is None:
+            raise RuntimeError("a GPU rendering thread failed") from self.error
+        if self.dev.type == "cuda":
+            for t in got:
+                t.record_stream(torch.cuda.current_stream(self.dev))
+        self.renders += 1
+        return got
 
     def __iter__(self):
         return self
 
     def __next__(self):
-        while self.n_buf < self.batch:
-            img = torch.from_numpy(self.photos.get()).to(self.dev, non_blocking=True).permute(2, 0, 1)
-            r = self.synth.render(self.rng, img, self.analysis, self.crop)
-            if r is None:
-                continue
-            got = self.synth.crops(self.rng, r, self.crop, self.crops_per)
-            if got is None:
-                continue
-            self.buf.append(got)
-            self.n_buf += got[0].shape[0]
-        x, b, c = (torch.cat([t[i] for t in self.buf]) for i in range(3))
-        out = (x[: self.batch], b[: self.batch], c[: self.batch])
-        rest = (x[self.batch :], b[self.batch :], c[self.batch :])
-        self.buf = [rest] if rest[0].shape[0] else []
-        self.n_buf = rest[0].shape[0]
+        if self.pool is None:
+            self.pool = list(self._take())
+        while self.pool[0].shape[0] < self.pool_min + self.batch:
+            got = self._take()
+            self.pool = [torch.cat([a, b]) for a, b in zip(self.pool, got)]
+        n = self.pool[0].shape[0]
+        idx = torch.randperm(n, generator=self.pick)
+        take, keep = idx[: self.batch].to(self.dev), idx[self.batch :].to(self.dev)
+        out = tuple(t.index_select(0, take) for t in self.pool)
+        self.pool = [t.index_select(0, keep) for t in self.pool]
         return out
+
+
+class _nullcontext:
+    def __enter__(self):
+        return None
+
+    def __exit__(self, *a):
+        return False

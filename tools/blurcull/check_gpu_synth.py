@@ -3,12 +3,17 @@ randomness the two draw differently), so each render must take the same decision
 
     python check_gpu_synth.py --data E:/LLMs/bluecull-data --renders 200          # a sample of the sharp cache
     python check_gpu_synth.py photo1.jpg photo2.png --renders 50 --device cpu     # any photos, no GPU needed
+    python check_gpu_synth.py --data E:/LLMs/bluecull-data --bench 300            # speed of real training steps
 
 Reports, over all crops: whether the kind of blur matched, the sigma labels' largest difference, the confidence
 labels' mean difference and the pixels' mean difference (0..255; JPEG is the GPU's approximation, so expect ~0.5).
 A crop whose confidence lands within a hair of the crop picker's 0.25 cutoff can make the two sides draw a different
 number of random values from there on: the remaining crops of that render are cut elsewhere (same blur, other
 places), so they are left out and counted as "drifted at a 0.25 tie". Then times both: CPU (one process) vs GPU.
+
+--bench N skips the comparison and runs N real training steps the way train.py does on the GPU (rendering threads,
+shuffle pool, rated photos every 4th step), then prints seconds per step and what a 30,000-step run would take.
+Run it with nothing else using the GPU.
 """
 from __future__ import annotations
 
@@ -70,7 +75,13 @@ def main():
     ap.add_argument("--analysis", type=int, default=1600)
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--bench", type=int, default=0, help="time N real training steps instead (needs --data)")
+    ap.add_argument("--batch", type=int, default=64)
+    ap.add_argument("--crops-per", type=int, default=32)
+    ap.add_argument("--renderers", type=int, default=3)
     a = ap.parse_args()
+    if a.bench:
+        return bench(a)
 
     files = [Path(p) for p in a.photos]
     if a.data:
@@ -128,6 +139,59 @@ def main():
     for k in sorted(by_kind):
         print(f"   {k:24s} {len(by_kind[k]):4d} crops   pixels mean |diff| {np.mean(by_kind[k]):.2f}")
     print(f"\ntime per render: CPU {1000 * t_cpu / n_r:.0f} ms (one process)   {dev.type.upper()} {1000 * t_gpu / n_r:.0f} ms")
+
+
+def bench(a):
+    from gpu_synth import GpuBatches
+    from net import BlurNet
+    from train import CROP, augment, cell_loss, rated_loss
+
+    if not a.data:
+        raise SystemExit("--bench needs --data")
+    data = Path(a.data)
+    man = json.loads((data / "cache" / "manifest.json").read_text(encoding="utf-8"))
+    analysis = int(man.get("analysis_long_edge", a.analysis))
+    ents = man["entries"]
+    sharp = [e["cache"] for e in ents if e["kind"] == "sharp" and not e.get("suspect") and not e["val"]]
+    rated = [e for e in ents if e["kind"] == "rated" and not e["val"]]
+    dev = torch.device(a.device)
+    print(f"bench: {len(sharp)} sharp / {len(rated)} rated photos, device {dev}, batch {a.batch}, "
+          f"{a.crops_per} crops per render, {a.renderers} rendering threads")
+    model = BlurNet().to(dev)
+    opt = torch.optim.AdamW(model.parameters(), lr=1e-3)
+    feed = GpuBatches(data, sharp, analysis, CROP, a.batch, dev, a.crops_per, seed=a.seed, renderers=a.renderers)
+    rng = np.random.default_rng(a.seed)
+
+    def step(i):
+        x, b, c = next(feed)
+        x, b, c = augment(x, b, c, rng)
+        l_blur, l_conf, _ = cell_loss(model(x), b, c)
+        loss = l_blur + 0.3 * l_conf
+        if rated and i % 4 == 0:
+            lr = rated_loss(model, data, rated, rng, dev, 2)
+            if lr is not None:
+                loss = loss + lr
+        opt.zero_grad(set_to_none=True)
+        loss.backward()
+        opt.step()
+
+    warm = min(50, max(5, a.bench // 5))  # fills the shuffle pool, caches the rated photos
+    t = time.perf_counter()
+    for i in range(warm):
+        step(i)
+    print(f"warm-up ({warm} steps, rated photos loaded, pool filled): {time.perf_counter() - t:.1f} s")
+    if dev.type == "cuda":
+        torch.cuda.synchronize()
+    r0, t = feed.renders, time.perf_counter()
+    for i in range(a.bench):
+        step(i)
+    if dev.type == "cuda":
+        torch.cuda.synchronize()
+    dt = (time.perf_counter() - t) / a.bench
+    renders = (feed.renders - r0) / a.bench
+    print(f"\n{dt:.3f} s/step ({1 / dt:.1f} steps/s, {renders:.1f} renders/step)  ->  30,000 steps ~ {30000 * dt / 3600:.2f} h")
+    if dev.type == "cuda":
+        print(f"GPU memory: {torch.cuda.max_memory_allocated(dev) / 2**30:.1f} GB peak")
 
 
 if __name__ == "__main__":

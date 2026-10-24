@@ -124,11 +124,15 @@ python train.py --data D:\blurcull-data
 - The defaults are 30,000 steps of 64 crops. On a CPU it takes much longer (the log prints an estimate). On a CPU,
   try `--steps 8000 --batch 32` first to see the shape of things.
 - **Where the examples are made.** With an NVIDIA GPU, the blurred examples are rendered on the GPU
-  (`gpu_synth.py`): the blur, the labels, noise, sharpening and JPEG all run there, background threads only decode
-  photos, and each rendered photo gives 16 crops (`--crops-per`). Without one, CPU worker processes make them
-  (`synth.py`, 8 crops each, `--workers`). `--synth cpu|gpu` picks one by hand. Both make the same examples:
-  `python check_gpu_synth.py --data D:\blurcull-data --renders 100` compares them render by render (same decisions,
-  same labels, pixels within JPEG rounding) and times both.
+  (`gpu_synth.py`): the blur, the labels, noise, sharpening and JPEG all run there. Three rendering threads
+  (`--renderers`) work ahead of the training loop, each photo gives 32 crops (`--crops-per`), and every batch is drawn
+  at random from a pool of waiting crops, so it still mixes many photos. Background threads only decode photos, and
+  the rated photos stay on the GPU after their first use. Without a GPU, CPU worker processes make the examples
+  (`synth.py`, 8 crops each, `--workers`). `--synth cpu|gpu` picks one by hand.
+- Both make the same examples: `python check_gpu_synth.py --data D:\blurcull-data --renders 100` compares them render
+  by render (same decisions, same labels, pixels within JPEG rounding) and times both.
+  `python check_gpu_synth.py --data D:\blurcull-data --bench 300` runs 300 real training steps and prints the time a
+  full run would take; run it with nothing else using the GPU.
 - CPU workers are separate Python processes that each load PyTorch's CUDA libraries; on Windows many of them can
   grow the page file on C: by tens of GB. Rendering on the GPU needs none of them.
 - It prints validation every 1,000 steps:

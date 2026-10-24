@@ -103,12 +103,21 @@ def cell_loss(out, b, c, ring=1):
     return l_blur, l_conf, mae
 
 
-def load_rated(data: Path, e: dict):
-    img = cv2.imread(str(data / e["cache"]), cv2.IMREAD_COLOR)
-    if img is None:
-        return None
-    y = luma(img.astype(np.float32) / 255)
-    return torch.from_numpy(y)[None, None]
+_RATED: dict[str, torch.Tensor] = {}  # rated photos' luma, kept on the training device after the first read
+
+
+def load_rated(data: Path, e: dict, dev=None):
+    y = _RATED.get(e["cache"])
+    if y is None:
+        img = cv2.imread(str(data / e["cache"]), cv2.IMREAD_COLOR)
+        if img is None:
+            return None
+        y = torch.from_numpy(luma(img.astype(np.float32) / 255))[None, None]
+        if dev is not None:
+            y = y.to(dev)
+        if len(_RATED) < 4000:
+            _RATED[e["cache"]] = y
+    return y
 
 
 def subject_b(out, subject=None):
@@ -131,7 +140,7 @@ def rated_loss(model, data, entries, rng, dev, n):
     losses = []
     for i in rng.choice(len(entries), size=min(n, len(entries)), replace=False):
         e = entries[int(i)]
-        y = load_rated(data, e)
+        y = load_rated(data, e, dev)
         if y is None:
             continue
         out = model(y.to(dev))
@@ -152,7 +161,7 @@ def validate(model, val_batches, rated_val, data, dev):
         maes.append(mae.item())
     inside, total, err = 0, 0, []
     for e in rated_val:
-        y = load_rated(data, e)
+        y = load_rated(data, e, dev)
         if y is None:
             continue
         b = subject_b(model(y.to(dev)), e.get("subject"))
@@ -183,7 +192,8 @@ def main():
     ap.add_argument("--rated-per-step", type=int, default=2)
     ap.add_argument("--workers", type=int, default=max(0, min(8, (os.cpu_count() or 2) - 1)), help="CPU workers (--synth cpu)")
     ap.add_argument("--synth", choices=["auto", "cpu", "gpu"], default="auto", help="where training examples are rendered")
-    ap.add_argument("--crops-per", type=int, help="crops cut from each rendered photo (default 8 on the CPU, 16 on the GPU)")
+    ap.add_argument("--crops-per", type=int, help="crops cut from each rendered photo (default 8 on the CPU, 32 on the GPU)")
+    ap.add_argument("--renderers", type=int, default=3, help="GPU rendering threads working ahead of training (--synth gpu)")
     ap.add_argument("--device", default="auto", help="auto | cpu | cuda | mps")
     ap.add_argument("--val-every", type=int, default=1000)
     ap.add_argument("--save-every", type=int, default=500)
@@ -209,8 +219,9 @@ def main():
 
     dev = device_auto(a.device)
     gpu_synth = a.synth == "gpu" or (a.synth == "auto" and dev.type == "cuda")
-    crops_per = a.crops_per or (16 if gpu_synth else 8)
-    print("device", dev, f"  examples rendered {f'by gpu_synth on {dev}' if gpu_synth else f'by {a.workers} CPU workers'}, {crops_per} crops each")
+    crops_per = a.crops_per or (32 if gpu_synth else 8)
+    where = f"by {a.renderers} gpu_synth threads on {dev}" if gpu_synth else f"by {a.workers} CPU workers"
+    print("device", dev, f"  examples rendered {where}, {crops_per} crops each")
     out = Path(a.out) if a.out else data / "runs"
     out.mkdir(parents=True, exist_ok=True)
     torch.manual_seed(0)
@@ -259,7 +270,7 @@ def main():
 
     if gpu_synth:
         dl = GpuBatches(data, sharp_tr, analysis, CROP, a.batch, dev, crops_per,
-                        seed=int(time.time() * 1000) % 2**31)
+                        seed=int(time.time() * 1000) % 2**31, renderers=a.renderers)
     else:
         ds = Synthetic(data, sharp_tr, analysis, crops_per=crops_per)
         dl = torch.utils.data.DataLoader(ds, batch_size=a.batch, num_workers=a.workers, persistent_workers=a.workers > 0)
