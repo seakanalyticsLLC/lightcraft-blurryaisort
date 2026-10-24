@@ -11,6 +11,9 @@ Two kinds of supervision:
 
 * sharp/ photos, blurred synthetically (synth.py): exact per-cell labels, endless variety. This teaches the
   network what blur *is*.
+* burst pairs: two rated photos taken within --pair-window seconds of each other (same burst: same car, light and
+  place) that you put in different folders. The one you rated sharper must score lower, by --pair-margin. This teaches
+  the fine differences between neighbouring folders (sharp vs slightly soft) that one-photo ranges barely constrain.
 * rated/ photos: real blur you judged by eye. The photo's subject score (subject.py) is pushed into the folder's
   lo..hi range. This ties the score scale to your eye and to real-world blur the synthetic kinds miss.
 
@@ -23,6 +26,7 @@ import argparse
 import json
 import math
 import os
+import re
 import time
 from pathlib import Path
 
@@ -137,6 +141,47 @@ def subject_b(out, subject=None):
     return None
 
 
+_STAMP = re.compile(r"(\d{8})-(\d{2})-(\d{2})-(\d{2})")
+
+
+def burst_pairs(entries: list[dict], window: float) -> list[tuple[dict, dict]]:
+    """(sharper, blurrier) pairs of rated photos shot within `window` seconds of each other (camera-style
+    YYYYMMDD-HH-MM-SS file names), from folders whose ranges are ordered: neither range contains the other."""
+    stamped = []
+    for e in entries:
+        m = _STAMP.search(Path(e["file"]).name)
+        if m:
+            day, h, mi, sec = m.groups()
+            stamped.append((day, int(h) * 3600 + int(mi) * 60 + int(sec), e))
+    stamped.sort(key=lambda t: (t[0], t[1]))
+    pairs = []
+    for i, (d1, t1, a) in enumerate(stamped):
+        for d2, t2, b in stamped[i + 1 :]:
+            if d2 != d1 or t2 - t1 > window:
+                break
+            if (a["lo"], a["hi"]) == (b["lo"], b["hi"]):
+                continue
+            if (a["lo"] <= b["lo"] and b["hi"] <= a["hi"]) or (b["lo"] <= a["lo"] and a["hi"] <= b["hi"]):
+                continue  # one range inside the other (e.g. artistic_30-80 around blurry_38-65): no order
+            pairs.append((a, b) if a["lo"] + a["hi"] < b["lo"] + b["hi"] else (b, a))
+    return pairs
+
+
+def pair_loss(model, data, pairs, rng, dev, n, margin):
+    """Hinge: the sharper-rated photo of each sampled burst pair scores at least `margin` (log2 sigma) lower."""
+    losses = []
+    for i in rng.choice(len(pairs), size=min(n, len(pairs)), replace=False):
+        a, b = pairs[int(i)]
+        ya, yb = load_rated(data, a, dev), load_rated(data, b, dev)
+        if ya is None or yb is None:
+            continue
+        ba, bb = subject_b(model(ya), a.get("subject")), subject_b(model(yb), b.get("subject"))
+        if ba is None or bb is None:
+            continue
+        losses.append(F.relu(margin + ba - bb))
+    return torch.stack(losses).mean() if losses else None
+
+
 def rated_loss(model, data, entries, rng, dev, n):
     """Push each rated photo's subject score into its folder's range (hinge, in log2-sigma units)."""
     losses = []
@@ -193,6 +238,10 @@ def main():
     ap.add_argument("--rated-weight", type=float, default=0.5, help="weight of the rated-photo loss")
     ap.add_argument("--rated-every", type=int, default=4, help="add rated photos every N steps")
     ap.add_argument("--rated-per-step", type=int, default=2)
+    ap.add_argument("--pair-weight", type=float, default=1.0, help="weight of the burst-pair loss (0 = off)")
+    ap.add_argument("--pair-window", type=float, default=2.0, help="seconds between two shots of the same burst")
+    ap.add_argument("--pair-margin", type=float, default=3.0, help="score points the sharper photo must be lower by")
+    ap.add_argument("--pairs-per-step", type=int, default=2)
     ap.add_argument("--workers", type=int, default=max(0, min(8, (os.cpu_count() or 2) - 1)), help="CPU workers (--synth cpu)")
     ap.add_argument("--synth", choices=["auto", "cpu", "gpu"], default="auto", help="where training examples are rendered")
     ap.add_argument("--crops-per", type=int, help="crops cut from each rendered photo (default 8 on the CPU, 32 on the GPU)")
@@ -218,7 +267,9 @@ def main():
     rated_va = [e for e in ents if e["kind"] == "rated" and e["val"]]
     if len(sharp_tr) < 5:
         raise SystemExit(f"only {len(sharp_tr)} usable sharp photos; add at least 50 (a few hundred is better)")
-    print(f"sharp: {len(sharp_tr)} train / {len(sharp_va)} val   rated: {len(rated_tr)} train / {len(rated_va)} val")
+    pairs = burst_pairs(rated_tr, a.pair_window) if a.pair_weight > 0 else []
+    print(f"sharp: {len(sharp_tr)} train / {len(sharp_va)} val   rated: {len(rated_tr)} train / {len(rated_va)} val   "
+          f"burst pairs: {len(pairs)}")
 
     dev = device_auto(a.device)
     gpu_synth = a.synth == "gpu" or (a.synth == "auto" and dev.type == "cuda")
@@ -287,22 +338,28 @@ def main():
         x, b, c = x.to(dev), b.to(dev), c.to(dev)
         l_blur, l_conf, mae = cell_loss(model(x), b, c)
         loss = l_blur + 0.3 * l_conf
-        l_rated = None
+        l_rated = l_pair = None
         if rated_tr and step % a.rated_every == 0:
             l_rated = rated_loss(model, data, rated_tr, rng, dev, a.rated_per_step)
             if l_rated is not None:
                 loss = loss + a.rated_weight * l_rated
+            if pairs:
+                l_pair = pair_loss(model, data, pairs, rng, dev, a.pairs_per_step, a.pair_margin * S_MAX / 100)
+                if l_pair is not None:
+                    loss = loss + a.pair_weight * l_pair
         opt.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
         opt.step()
         sched.step()
         step += 1
-        run.append((l_blur.item(), l_conf.item(), mae.item(), l_rated.item() if l_rated is not None else np.nan))
+        run.append((l_blur.item(), l_conf.item(), mae.item(), l_rated.item() if l_rated is not None else np.nan,
+                    l_pair.item() if l_pair is not None else np.nan))
         if step % 100 == 0:
             r = np.nanmean(run[-100:], axis=0)
             rate = (time.time() - t0) / len(run)
             print(f"step {step}/{a.steps}  blur {r[0]:.4f}  conf {r[1]:.4f}  mae {r[2]:.3f}  rated {r[3]:.3f}  "
+                  + (f"pairs {r[4]:.3f}  " if pairs else "") +
                   f"{rate:.2f}s/step  ~{(a.steps - step) * rate / 3600:.1f} h left", flush=True)
         if step % a.save_every == 0 or step == a.steps:
             torch.save({"model": model.state_dict(), "opt": opt.state_dict(), "sched": sched.state_dict(),

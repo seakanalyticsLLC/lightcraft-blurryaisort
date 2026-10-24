@@ -155,6 +155,11 @@ python train.py --data D:\blurcull-data
 - Stopped it? `python train.py --data D:\blurcull-data --resume` carries on.
 - `--rated-weight` (default 0.5) sets how strongly your ratings pull the scale. Raise it if your rated photos keep
   missing their ranges.
+- **Burst pairs.** Rated photos shot within 2 s of each other (camera-style `YYYYMMDD-HH-MM-SS` file names) that you
+  put in different folders become pairs: same car, light and place, so the only difference is the one you judged.
+  The photo you rated sharper must score at least 3 points lower (`--pair-margin`, `--pair-window`,
+  `--pair-weight`, 0 turns it off). This is what teaches sharp vs slightly soft; a single photo's range barely does.
+  The log shows how many pairs it found and their running loss (`pairs`).
 
 ## 5. Export and check
 
