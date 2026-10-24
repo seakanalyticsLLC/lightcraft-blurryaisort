@@ -3,6 +3,9 @@
     python train.py --data D:/blurcull-data                 # GPU if PyTorch sees one, else CPU
     python train.py --data D:/blurcull-data --resume        # carry on from runs/last.pt
 
+The blurred training examples are rendered on the GPU (gpu_synth.py) when PyTorch sees a CUDA card, else by CPU
+worker processes (synth.py); --synth cpu|gpu forces one. Both make the same examples (check_gpu_synth.py).
+
 Two kinds of supervision:
 
 * sharp/ photos, blurred synthetically (synth.py): exact per-cell labels, endless variety. This teaches the
@@ -29,6 +32,7 @@ import torch.nn.functional as F
 
 from kernels import S_MAX
 from net import BlurNet
+from gpu_synth import GpuBatches, GpuSynth
 from synth import examples, luma
 from subject import AUTO_PERCENTILE, CONF_MIN, REGION_PERCENTILE, region_cells
 
@@ -79,12 +83,12 @@ def augment(x, b, c, rng):
     x, b, c = (torch.rot90(t, k, (2, 3)) for t in (x, b, c))
     if rng.random() < 0.5:
         x, b, c = (torch.flip(t, (3,)) for t in (x, b, c))
-    n = x.shape[0]
-    gain = torch.empty(n, 1, 1, 1).uniform_(0.6, 1.3)
-    off = torch.empty(n, 1, 1, 1).uniform_(-0.15, 0.15)
+    n, dev = x.shape[0], x.device
+    gain = torch.empty(n, 1, 1, 1, device=dev).uniform_(0.6, 1.3)
+    off = torch.empty(n, 1, 1, 1, device=dev).uniform_(-0.15, 0.15)
     m = x.mean(dim=(2, 3), keepdim=True)
     x = ((x - m) * gain + m + off).clamp(0, 1)
-    inv = (torch.rand(n) < 0.1).view(n, 1, 1, 1)
+    inv = (torch.rand(n, device=dev) < 0.1).view(n, 1, 1, 1)
     return torch.where(inv, 1 - x, x), b, c
 
 
@@ -177,7 +181,9 @@ def main():
     ap.add_argument("--rated-weight", type=float, default=0.5, help="weight of the rated-photo loss")
     ap.add_argument("--rated-every", type=int, default=4, help="add rated photos every N steps")
     ap.add_argument("--rated-per-step", type=int, default=2)
-    ap.add_argument("--workers", type=int, default=max(0, min(8, (os.cpu_count() or 2) - 1)))
+    ap.add_argument("--workers", type=int, default=max(0, min(8, (os.cpu_count() or 2) - 1)), help="CPU workers (--synth cpu)")
+    ap.add_argument("--synth", choices=["auto", "cpu", "gpu"], default="auto", help="where training examples are rendered")
+    ap.add_argument("--crops-per", type=int, help="crops cut from each rendered photo (default 8 on the CPU, 16 on the GPU)")
     ap.add_argument("--device", default="auto", help="auto | cpu | cuda | mps")
     ap.add_argument("--val-every", type=int, default=1000)
     ap.add_argument("--save-every", type=int, default=500)
@@ -202,7 +208,9 @@ def main():
     print(f"sharp: {len(sharp_tr)} train / {len(sharp_va)} val   rated: {len(rated_tr)} train / {len(rated_va)} val")
 
     dev = device_auto(a.device)
-    print("device", dev)
+    gpu_synth = a.synth == "gpu" or (a.synth == "auto" and dev.type == "cuda")
+    crops_per = a.crops_per or (16 if gpu_synth else 8)
+    print("device", dev, f"  examples rendered {f'by gpu_synth on {dev}' if gpu_synth else f'by {a.workers} CPU workers'}, {crops_per} crops each")
     out = Path(a.out) if a.out else data / "runs"
     out.mkdir(parents=True, exist_ok=True)
     torch.manual_seed(0)
@@ -221,11 +229,20 @@ def main():
     # fixed validation crops
     vrng = np.random.default_rng(1234)
     vx, vb, vc = [], [], []
+    vsynth = GpuSynth(dev, seed=1234) if gpu_synth else None
     for f in sharp_va:
         img = cv2.imread(str(data / f), cv2.IMREAD_COLOR)
         if img is None:
             continue
         for _ in range(max(1, 600 // len(sharp_va))):
+            if vsynth is not None:
+                r = vsynth.render(vrng, torch.from_numpy(img).to(dev).permute(2, 0, 1), analysis, CROP)
+                got = vsynth.crops(vrng, r, CROP, 4) if r is not None else None
+                if got is not None:
+                    vx += list(got[0][:, 0].cpu().numpy())
+                    vb += list(got[1][:, 0].cpu().numpy())
+                    vc += list(got[2][:, 0].cpu().numpy())
+                continue
             for y, s, c, _ in examples(vrng, img, analysis, CROP, 4):
                 vx.append(y.astype(np.float32) / 255)
                 vb.append(np.log2(1.0 + np.maximum(s, 0)))
@@ -234,14 +251,18 @@ def main():
     for i in range(0, len(vx), 128):
         val_batches.append(
             (
-                torch.from_numpy(np.stack(vx[i : i + 128]))[:, None],
+                torch.from_numpy(np.stack(vx[i : i + 128])).float()[:, None],
                 torch.from_numpy(np.stack(vb[i : i + 128])).float()[:, None],
                 torch.from_numpy(np.stack(vc[i : i + 128])).float()[:, None],
             )
         )
 
-    ds = Synthetic(data, sharp_tr, analysis)
-    dl = torch.utils.data.DataLoader(ds, batch_size=a.batch, num_workers=a.workers, persistent_workers=a.workers > 0)
+    if gpu_synth:
+        dl = GpuBatches(data, sharp_tr, analysis, CROP, a.batch, dev, crops_per,
+                        seed=int(time.time() * 1000) % 2**31)
+    else:
+        ds = Synthetic(data, sharp_tr, analysis, crops_per=crops_per)
+        dl = torch.utils.data.DataLoader(ds, batch_size=a.batch, num_workers=a.workers, persistent_workers=a.workers > 0)
     rng = np.random.default_rng(step)
     t0, run = time.time(), []
     model.train()

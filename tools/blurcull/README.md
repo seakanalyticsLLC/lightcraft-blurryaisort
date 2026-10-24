@@ -13,6 +13,8 @@ to make one:
 |---|---|
 | `prepare.py` | reads your photo folders into a training cache (raws through `lightcraft-cli`) |
 | `train.py` | trains BlurNet (GPU if PyTorch sees one, else CPU) |
+| `gpu_synth.py` | renders the blurred training examples on the GPU (the same examples as `synth.py`) |
+| `check_gpu_synth.py` | checks `gpu_synth.py` against `synth.py` and times both |
 | `export.py` | writes `blurnet.safetensors`, the file LightCraft installs |
 | `score.py` | scores any folder outside LightCraft, with optional blur-map pictures, to check a model |
 | `net.py`, `subject.py`, `synth.py`, `kernels.py` | the network, subject scoring, synthetic blur, and the blur measure. `crates/blur` is their Rust twin |
@@ -119,9 +121,16 @@ Run it again after adding photos. Only new ones are processed.
 python train.py --data D:\blurcull-data
 ```
 
-- The defaults are 30,000 steps of 64 crops. On a recent NVIDIA GPU that takes about 1–2 hours. On a CPU it takes
-  much longer (the log prints an estimate). On a CPU, try `--steps 8000 --batch 32` first to see the shape of
-  things.
+- The defaults are 30,000 steps of 64 crops. On a CPU it takes much longer (the log prints an estimate). On a CPU,
+  try `--steps 8000 --batch 32` first to see the shape of things.
+- **Where the examples are made.** With an NVIDIA GPU, the blurred examples are rendered on the GPU
+  (`gpu_synth.py`): the blur, the labels, noise, sharpening and JPEG all run there, background threads only decode
+  photos, and each rendered photo gives 16 crops (`--crops-per`). Without one, CPU worker processes make them
+  (`synth.py`, 8 crops each, `--workers`). `--synth cpu|gpu` picks one by hand. Both make the same examples:
+  `python check_gpu_synth.py --data D:\blurcull-data --renders 100` compares them render by render (same decisions,
+  same labels, pixels within JPEG rounding) and times both.
+- CPU workers are separate Python processes that each load PyTorch's CUDA libraries; on Windows many of them can
+  grow the page file on C: by tens of GB. Rendering on the GPU needs none of them.
 - It prints validation every 1,000 steps:
   - `synthetic_mae_log2`: the error on held-out synthetic blur. Lower is better; below 0.3 is good.
   - `rated_in_range`: the share of held-out rated photos that land inside their folder's range. Higher is better.
